@@ -1,0 +1,155 @@
+/* ── Sidebar ── */
+.sidebar {
+  width: 64px;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 100vh;
+  position: relative;
+  z-index: 50;
+}
+
+.sidebar.abierto {
+  width: 240px;
+}
+
+/* ── Header ── */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 14px;
+  border-bottom: 1px solid #1e293b;
+  min-height: 60px;
+}
+
+.menu-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: background 0.2s;
+  line-height: 1;
+}
+
+.menu-btn:hover {
+  background: #1e293b;
+}
+
+.sidebar-titulo {
+  color: white;
+  font-size: 1rem;
+  font-weight: bold;
+  letter-spacing: 3px;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+/* ── Nav ── */
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+  gap: 2px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  color: #94a3b8;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.nav-item:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-left-color: #3b82f6;
+}
+
+.nav-item.router-link-active {
+  background: #1e3a8a;
+  color: white;
+  border-left-color: #3b82f6;
+}
+
+.icono {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.nav-texto {
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* ── Footer ── */
+.sidebar-footer {
+  padding: 12px 8px;
+  border-top: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.footer-info {
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.footer-label {
+  color: #64748b;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.footer-email {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-cerrar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  transition: background 0.2s;
+  width: 100%;
+}
+
+.btn-cerrar:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.footer-rol {
+  color: #3b82f6;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}

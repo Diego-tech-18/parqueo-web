@@ -1,0 +1,223 @@
+/* ── Overlay ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(3px);
+}
+
+/* ── Contenedor modal ── */
+.modal-container {
+  background: white;
+  border-radius: 16px;
+  width: 620px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-header h2 {
+  color: #1e293b;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.btn-x {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.btn-x:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+/* ── Body ── */
+.modal-body {
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Filas ── */
+.fila {
+  display: flex;
+  gap: 16px;
+}
+
+/* ── Campos ── */
+.campo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campo.full {
+  flex: 1 1 100%;
+}
+
+.campo label {
+  font-size: 0.85rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.req {
+  color: #ef4444;
+}
+
+.campo input,
+.campo select {
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  color: #1e293b;
+  outline: none;
+  transition: border 0.2s, box-shadow 0.2s;
+  background: #f8fafc;
+}
+
+.campo input:focus,
+.campo select:focus {
+  border-color: #1e40af;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+}
+
+/* ── Input con ícono ── */
+.input-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.input-icon span {
+  position: absolute;
+  right: 12px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+/* ── Errores ── */
+.error-campo {
+  color: #ef4444;
+  font-size: 0.78rem;
+}
+
+.error-general {
+  color: #ef4444;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0 28px;
+}
+
+/* ── Foto upload ── */
+.foto-upload {
+  border: 2px dashed #e2e8f0;
+  border-radius: 10px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border 0.2s;
+  overflow: hidden;
+}
+
+.foto-upload:hover {
+  border-color: #1e40af;
+}
+
+.foto-placeholder {
+  text-align: center;
+  color: #94a3b8;
+}
+
+.foto-placeholder span {
+  font-size: 1.5rem;
+}
+
+.foto-placeholder p {
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
+.foto-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Footer ── */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 28px 24px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-cancelar {
+  background: #f1f5f9;
+  color: #64748b;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.btn-cancelar:hover {
+  background: #e2e8f0;
+}
+
+.btn-guardar {
+  background: #1e40af;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.btn-guardar:hover {
+  background: #1d3a9e;
+}
+
+.btn-guardar:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
