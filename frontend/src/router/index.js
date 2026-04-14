@@ -9,6 +9,7 @@ const routes = [
   { path: '/usuarios', component: () => import('@/views/UsuariosView.vue'), meta: { requiresAuth: true, soloAdmin: true } },
   { path: '/camaras', component: () => import('@/views/CamarasView.vue'),   meta: { requiresAuth: true } },
   { path: '/videos', component: () => import('@/views/VideosView.vue'),     eta: { requiresAuth: true }},
+  { path: '/mapa',     component: () => import('@/views/MapaParqueoView.vue'), meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({

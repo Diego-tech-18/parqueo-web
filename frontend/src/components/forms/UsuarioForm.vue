@@ -126,7 +126,7 @@
 <script setup>
 import '@/assets/css/forms.css'
 import { ref, watch } from 'vue'
-import { crearUsuario, editarUsuario } from '@/api/usuarios.js'
+import { crearUsuario, actualizarUsuario } from '@/api/usuarios.js'
 
 // ── Props y eventos ──
 const props = defineProps({
@@ -159,10 +159,12 @@ const errores = ref({})
 
 // ── Si viene usuarioEditar → modo editar, llena el form ──
 const editando = ref(false)
+const usuarioId = ref(null) 
 
 watch(() => props.usuarioEditar, (usuario) => {
   if (usuario) {
     editando.value = true
+    usuarioId.value = usuario.id  // ← AGREGAR ESTA LÍNEA
     form.value = {
       nombre   : usuario.nombre,
       apellido : usuario.apellido,
@@ -233,7 +235,7 @@ async function guardar() {
 
     if (editando.value) {
       // PUT /api/usuarios/:id/
-      await editarUsuario(props.usuarioEditar.id, datos)
+      await actualizarUsuario(usuarioId.value, datos) 
     } else {
       // POST /api/usuarios/
       await crearUsuario(datos)

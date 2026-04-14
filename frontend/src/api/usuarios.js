@@ -1,13 +1,37 @@
-import api from './auth.js'
+import api from './auth'
+import { API_ENDPOINTS } from '@/constants/api'
 
-// Obtener todos los usuarios → GET /api/usuarios/
-export const getUsuarios     = ()          => api.get('/usuarios/')
 
-// Crear usuario → POST /api/usuarios/
-export const crearUsuario    = (datos)     => api.post('/usuarios/', datos)
 
-// Editar usuario → PUT /api/usuarios/:id/
-export const editarUsuario   = (id, datos) => api.put(`/usuarios/${id}/`, datos)
+export function getUsuarios() {
+  return api.get(API_ENDPOINTS.USUARIOS.LIST)  // ✅ Desde constants
+}
 
-// Eliminar usuario → DELETE /api/usuarios/:id/
-export const eliminarUsuario = (id)        => api.delete(`/usuarios/${id}/`)
+/**
+ * Obtiene un usuario específico por ID
+ * @param {number} id - ID del usuario
+ * @returns {Promise}
+ */
+export function getUsuario(id) {
+  return api.get(API_ENDPOINTS.USUARIOS.DETAIL(id))  // ✅ Función dinámica
+}
+
+
+export function crearUsuario(datosUsuario) {
+  return api.post(API_ENDPOINTS.USUARIOS.CREATE, datosUsuario)  // ✅ Desde constants
+}
+
+
+export function actualizarUsuario(id, datosUsuario) {
+  return api.put(API_ENDPOINTS.USUARIOS.UPDATE(id), datosUsuario)  // ✅ Función dinámica
+}
+
+
+export function actualizarUsuarioParcial(id, datosUsuario) {
+  return api.patch(API_ENDPOINTS.USUARIOS.UPDATE(id), datosUsuario)
+}
+
+
+export function eliminarUsuario(id) {
+  return api.delete(API_ENDPOINTS.USUARIOS.DELETE(id))  // ✅ Función dinámica
+}

@@ -102,7 +102,7 @@ class UsuarioListView(APIView):
 # ────────────────────────────────────────────
 class UsuarioDetailView(APIView):
     permission_classes = [SoloAdministrador] 
-#IsAuthenticated
+
     def get_object(self, pk):
         """Busca usuario por ID, devuelve None si no existe"""
         try:

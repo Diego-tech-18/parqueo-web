@@ -46,7 +46,8 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     email    = models.EmailField(unique=True)                        # se usa para login
     nombre   = models.CharField(max_length=100)
     apellido = models.CharField(max_length=100)
-    ci       = models.CharField(max_length=20, unique=True)          # carnet de identidad
+    ci       = models.CharField(max_length=20, unique=True) 
+    telefono = models.CharField(max_length=15, blank=True, null=True)          # carnet de identidad
     rol      = models.CharField(max_length=20, choices=ROL_CHOICES)
     activo   = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)                    # acceso al admin Django

@@ -16,6 +16,12 @@
         <span class="nav-texto" v-show="abierto">Inicio</span>
       </router-link>
 
+        <!-- Mapa de Parqueo --> 
+      <router-link to="/mapa" class="nav-item" title="Mapa de Parqueo">
+        <span class="icono">🅿️</span>
+        <span class="nav-texto" v-show="abierto">Mapa Parqueo</span>
+      </router-link>
+
   
 
       <router-link to="/camaras" class="nav-item" title="Cámaras">

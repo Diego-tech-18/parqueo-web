@@ -1,43 +1,62 @@
+// autentificacion
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth.js'
+import { API_BASE_URL, API_TIMEOUT, API_ENDPOINTS } from '@/constants/api'
 
-// URL base de Django
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api'
+  baseURL: API_BASE_URL,    // ✅ Ahora desde constants
+  timeout: API_TIMEOUT,      // ✅ Ahora desde constants
 })
 
-// ── Interceptor: agrega token en cada petición automáticamente ──
+
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token')
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  
   return config
 })
 
-// ── Login ──
-export async function login(email, password) {
-  const res = await api.post('/auth/login/', { email, password })
-  localStorage.setItem('token', res.data.access)
-  // localStorage.setItem('usuario', JSON.stringify(res.data.usuario))
-  //return res.data
-   // Guarda datos del usuario (incluye rol) en Pinia y localStorage
-  const authStore = useAuthStore()
-  authStore.guardarUsuario(res.data.usuario)
 
-  return res.data
+/**
+ * Inicia sesión con email y contraseña
+ @param {string} email 
+ @param {string} password 
+ @returns {Promise} - Respuesta del servidor
+ * 
+ * USO:
+ *   try {
+ *     await login(email, password)
+ *     router.push('/home')
+ *   } catch (error) {
+ *     console.error('Login fallido')
+ *   }
+ */
+export async function login(email, password) {
+  // Hacer petición al backend
+  const respuesta = await api.post(API_ENDPOINTS.AUTH.LOGIN, { 
+    email, 
+    password 
+  })
+
+  // Guardar token en localStorage
+  localStorage.setItem('token', respuesta.data.access)
+
+  // Guardar usuario en Pinia store
+  const authStore = useAuthStore()
+  authStore.guardarUsuario(respuesta.data.usuario)
+
+  return respuesta.data
 }
 
-// ── Logout ──
+
 export function logout() {
-  //antes
-  //localStorage.removeItem('token')
-  //localStorage.removeItem('usuario')
-  //depues
   const authStore = useAuthStore()
   authStore.cerrarSesion()
-  
 }
 
-// ── Export default para que otros archivos puedan importarlo ──
-export default api  // ← esta línea es la que faltaba
+
+export default api
