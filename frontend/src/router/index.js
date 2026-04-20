@@ -1,15 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 
-
-
 const routes = [
   { path: '/', component: LoginView },
   { path: '/home',     component: () => import('@/views/HomeView.vue'),     meta: { requiresAuth: true } },
   { path: '/usuarios', component: () => import('@/views/UsuariosView.vue'), meta: { requiresAuth: true, soloAdmin: true } },
   { path: '/camaras', component: () => import('@/views/CamarasView.vue'),   meta: { requiresAuth: true } },
-  { path: '/videos', component: () => import('@/views/VideosView.vue'),     eta: { requiresAuth: true }},
+  { path: '/videos', component: () => import('@/views/VideosView.vue'),     meta: { requiresAuth: true }},
   { path: '/mapa',     component: () => import('@/views/MapaParqueoView.vue'), meta: { requiresAuth: true } },
+  { path: '/config-espacios', component: () => import('@/views/ConfigEspaciosView.vue'), meta: { requiresAuth: true, soloAdmin: true } },
+  { path: '/entradas-salidas', component: () => import('@/views/EntradasSalidasView.vue'), meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({
@@ -18,7 +18,7 @@ const router = createRouter({
 })
 
 // ── Guard: revisa si el usuario está logueado antes de cada ruta ──
-// ── Guard ──
+
 router.beforeEach((to, from) => {
   const token   = localStorage.getItem('token')
   const usuario = JSON.parse(localStorage.getItem('usuario') || 'null')

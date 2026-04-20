@@ -22,6 +22,12 @@
         <span class="nav-texto" v-show="abierto">Mapa Parqueo</span>
       </router-link>
 
+      <!-- Entradas y Salidas -->
+      <router-link to="/entradas-salidas" class="nav-item" title="Entradas y Salidas">
+        <span class="icono">🚗</span>
+        <span class="nav-texto" v-show="abierto">Entradas/Salidas</span>
+      </router-link>
+
   
 
       <router-link to="/camaras" class="nav-item" title="Cámaras">
@@ -38,6 +44,16 @@
       >
         <span class="icono">👥</span>
         <span class="nav-texto" v-show="abierto">Usuarios</span>
+      </router-link>
+
+      <router-link
+        v-if="authStore.esAdministrador"
+        to="/config-espacios"
+        class="nav-item"
+        title="Gestión de Espacios"
+      >
+        <span class="icono">⚙️</span>
+        <span class="nav-texto" v-show="abierto">Config. Espacios</span>
       </router-link>
 
     </nav>

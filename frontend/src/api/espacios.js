@@ -8,6 +8,10 @@ import { API_ENDPOINTS } from '@/constants/api'
 
 
 
+/**
+ * Obtiene la lista de todas las secciones
+ * @returns {Promise}
+ */
 export function getSecciones() {
   return api.get(API_ENDPOINTS.SECCIONES.LIST)
 }

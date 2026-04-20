@@ -1,6 +1,6 @@
 
 from django.contrib import admin
-from .models import Seccion, Espacio
+from .models import Seccion, Espacio , Registro
 
 # ADMIN: SECCIÓN
 
@@ -67,3 +67,41 @@ class EspacioAdmin(admin.ModelAdmin):
         queryset.update(estado='FUERA_SERVICIO')
         self.message_user(request, f'{queryset.count()} espacios marcados como FUERA DE SERVICIO')
     marcar_fuera_servicio.short_description = "Marcar como FUERA DE SERVICIO"
+
+    
+
+
+# ADMIN: REGISTRO
+
+@admin.register(Registro)
+class RegistroAdmin(admin.ModelAdmin):
+    list_display = [
+        'id',
+        'placa',
+        'tipo_vehiculo',
+        'espacio',
+        'fecha_entrada',
+        'fecha_salida',
+        'tiempo_minutos',
+        'tarifa',
+        'horario_entrada',
+        'estado',
+    ]
+    
+    list_filter = [
+        'estado',
+        'horario_entrada',
+        'tipo_vehiculo',
+        'fecha_entrada',
+    ]
+    
+    search_fields = ['placa', 'espacio__numero']
+    
+    readonly_fields = [
+        'fecha_entrada',
+        'horario_entrada',
+        'creado_en',
+        'actualizado_en',
+    ]
+    
+    ordering = ['-fecha_entrada']

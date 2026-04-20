@@ -4,7 +4,7 @@
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
-export const API_TIMEOUT = 10000  // 10 segundos
+export const API_TIMEOUT = 30000// 10 segundos
 
 
 // API (Organizados por módulo)
@@ -12,7 +12,7 @@ export const API_TIMEOUT = 10000  // 10 segundos
 
 export const API_ENDPOINTS = {
   
-  // Autenticación 
+  // ── Autenticación ──
   AUTH: {
     LOGIN: '/auth/login/',
     LOGOUT: '/auth/logout/',
@@ -20,7 +20,7 @@ export const API_ENDPOINTS = {
     ME: '/auth/me/',
   },
 
-  //  Usuarios 
+  // ── Usuarios ──
   USUARIOS: {
     LIST: '/usuarios/',
     CREATE: '/usuarios/',
@@ -29,7 +29,16 @@ export const API_ENDPOINTS = {
     DELETE: (id) => `/usuarios/${id}/`,
   },
 
-   // ── Espacios ──  
+  // ── Secciones ──  
+  SECCIONES: {
+    LIST: '/secciones/',
+    CREATE: '/secciones/',
+    DETAIL: (id) => `/secciones/${id}/`,
+    UPDATE: (id) => `/secciones/${id}/`,
+    DELETE: (id) => `/secciones/${id}/`,
+  },
+
+  // ── Espacios ──
   ESPACIOS: {
     LIST: '/espacios/',
     CREATE: '/espacios/',
@@ -39,10 +48,17 @@ export const API_ENDPOINTS = {
     CAMBIAR_ESTADO: (id) => `/espacios/${id}/cambiar-estado/`,
   },
 
-  // ── Mapa ── 
+  // ── Mapa ──
   MAPA: {
     COMPLETO: '/mapa/',
   },
 
+  // ── Registros (Entradas/Salidas) ──
+  REGISTROS: {
+    ENTRADA: '/registros/entrada/',
+    SALIDA: '/registros/salida/',
+    BUSCAR: '/registros/buscar/',
+    HISTORIAL: '/registros/historial/',
+  },
 
 }
