@@ -35,7 +35,7 @@
           </div>
           <div class="campo">
             <label>Teléfono</label>
-            <input v-model="form.telefono" placeholder="Ej: 70012345" />
+            <input v-model="form.telefono" placeholder="Ej: 70012345" maxlength="15" />
           </div>
         </div>
 
@@ -43,7 +43,7 @@
         <div class="fila">
           <div class="campo full">
             <label>Correo Electrónico <span class="req">*</span></label>
-            <input v-model="form.email" type="email" placeholder="Ej: diego@vortex.com" />
+            <input v-model="form.email" type="email" placeholder="Ej: diego@vortex.com" autocomplete="off" />
             <span class="error-campo" v-if="errores.email">{{ errores.email }}</span>
           </div>
         </div>
@@ -51,25 +51,49 @@
         <!-- Fila 4: Contraseña y Confirmar -->
         <div class="fila">
           <div class="campo">
-            <label>Contraseña <span class="req" v-if="!editando">*</span></label>
+            <label>
+              Contraseña 
+              <span class="req" v-if="!editando">*</span>
+              <span v-if="editando" style="font-size: 0.8rem; color: #64748b;">(Dejar vacío para mantener)</span>
+            </label>
             <div class="input-icon">
-             
               <input
                 v-model="form.password"
                 :type="verPass ? 'text' : 'password'"
-                placeholder="Contraseña"
+                :placeholder="editando ? 'Nueva contraseña (opcional)' : 'Mínimo 8 caracteres'"
+                @input="validarPasswordEnTiempoReal"
+                 autocomplete="new-password"
               />
-              <span @click="verPass = !verPass">{{ verPass ? '🙈' : '👁️' }}</span>
+              <span @click="verPass = !verPass" style="cursor: pointer;">
+                {{ verPass ? '🙈' : '👁️' }}
+              </span>
             </div>
             <span class="error-campo" v-if="errores.password">{{ errores.password }}</span>
+            
+            <!-- Requisitos de contraseña -->
+            <div v-if="form.password && mostrarRequisitos" class="requisitos-password">
+              <p style="font-size: 0.85rem; margin: 8px 0 5px 0; font-weight: 500;"></p>
+              <ul style="margin: 0; padding-left: 20px; font-size: 0.8rem;">
+                <li :class="{ cumplido: requisitos.longitud }">
+                  {{ requisitos.longitud ? '✓' : '✗' }} Mínimo 8 caracteres
+                </li>
+                <li :class="{ cumplido: requisitos.numero }">
+                  {{ requisitos.numero ? '✓' : '✗' }} Al menos un número
+                </li>
+              
+              </ul>
+            </div>
           </div>
+          
           <div class="campo">
-            <label>Confirmar Contraseña <span class="req" v-if="!editando">*</span></label>
+            <label>Confirmar Contraseña <span class="req" v-if="!editando || form.password">*</span></label>
             <div class="input-icon">
               <input
                 v-model="form.confirmar"
                 :type="verPass ? 'text' : 'password'"
                 placeholder="Repite la contraseña"
+                :disabled="!form.password"
+                autocomplete="new-password"
               />
             </div>
             <span class="error-campo" v-if="errores.confirmar">{{ errores.confirmar }}</span>
@@ -106,6 +130,23 @@
           </div>
         </div>
 
+        <!-- Fila 6: Estado Activo (solo en edición) -->
+        <div class="fila" v-if="editando">
+          <div class="campo full">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input 
+                type="checkbox" 
+                v-model="form.activo"
+                style="width: 20px; height: 20px; cursor: pointer;"
+              />
+              <span>Usuario activo (puede iniciar sesión)</span>
+            </label>
+            <p style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">
+              Desmarcar para suspender el acceso sin eliminar el historial
+            </p>
+          </div>
+        </div>
+
       </div>
 
       <!-- Error general -->
@@ -125,61 +166,106 @@
 
 <script setup>
 import '@/assets/css/forms.css'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { crearUsuario, actualizarUsuario } from '@/api/usuarios.js'
 
-// ── Props y eventos ──
+// ══════════════════════════════════════════════════════════════════════════
+// PROPS Y EVENTOS
+// ══════════════════════════════════════════════════════════════════════════
+
 const props = defineProps({
   usuarioEditar: {
     type: Object,
     default: null  // null = modo crear, objeto = modo editar
   }
 })
+
 const emit = defineEmits(['cerrar', 'guardado'])
 
-// ── Estado del formulario ──
-const cargando    = ref(false)
-const verPass     = ref(false)
-const preview     = ref(null)
+// ══════════════════════════════════════════════════════════════════════════
+// ESTADO
+// ══════════════════════════════════════════════════════════════════════════
+
+const cargando = ref(false)
+const verPass = ref(false)
+const preview = ref(null)
 const errorGeneral = ref('')
 const archivoFoto = ref(null)
+const editando = ref(false)
+const usuarioId = ref(null)
+const mostrarRequisitos = ref(false)
 
 const form = ref({
-  nombre   : '',
-  apellido : '',
-  ci       : '',
-  telefono : '',
-  email    : '',
-  password : '',
+  nombre: '',
+  apellido: '',
+  ci: '',
+  telefono: '',
+  email: '',
+  password: '',
   confirmar: '',
-  rol      : '',
+  rol: '',
+   activo: true,
 })
 
 const errores = ref({})
 
-// ── Si viene usuarioEditar → modo editar, llena el form ──
-const editando = ref(false)
-const usuarioId = ref(null) 
+// ══════════════════════════════════════════════════════════════════════════
+// VALIDACIÓN DE CONTRASEÑA EN TIEMPO REAL
+// ══════════════════════════════════════════════════════════════════════════
+
+const requisitos = computed(() => {
+  const pass = form.value.password
+  return {
+    longitud: pass.length >= 8,
+    mayuscula: /[A-Z]/.test(pass),
+    numero: /[0-9]/.test(pass),
+    simbolo: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pass),
+  }
+})
+
+const passwordValida = computed(() => {
+  return requisitos.value.longitud &&
+         requisitos.value.mayuscula &&
+         requisitos.value.numero &&
+         requisitos.value.simbolo
+})
+
+function validarPasswordEnTiempoReal() {
+  mostrarRequisitos.value = form.value.password.length > 0
+  
+  // Limpiar error de contraseña si está escribiendo
+  if (errores.value.password) {
+    delete errores.value.password
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// WATCH: Si viene usuarioEditar → modo editar
+// ══════════════════════════════════════════════════════════════════════════
 
 watch(() => props.usuarioEditar, (usuario) => {
   if (usuario) {
     editando.value = true
-    usuarioId.value = usuario.id  // ← AGREGAR ESTA LÍNEA
+    usuarioId.value = usuario.id
     form.value = {
-      nombre   : usuario.nombre,
-      apellido : usuario.apellido,
-      ci       : usuario.ci,
-      telefono : usuario.telefono || '',
-      email    : usuario.email,
-      password : '',
-      confirmar: '',
-      rol      : usuario.rol,
+      nombre: usuario.nombre,
+      apellido: usuario.apellido,
+      ci: usuario.ci,
+      telefono: usuario.telefono || '',
+      email: usuario.email,
+      password: '',      // ← VACÍO para edición
+      confirmar: '',     // ← VACÍO para edición
+      rol: usuario.rol,
+      activo: usuario.activo !== undefined ? usuario.activo : true,
     }
     preview.value = usuario.foto || null
   }
 }, { immediate: true })
 
-// ── Cargar foto y mostrar preview ──
+// ══════════════════════════════════════════════════════════════════════════
+// FUNCIONES
+// ══════════════════════════════════════════════════════════════════════════
+
 function cargarFoto(e) {
   const archivo = e.target.files[0]
   if (!archivo) return
@@ -187,46 +273,67 @@ function cargarFoto(e) {
   preview.value = URL.createObjectURL(archivo)
 }
 
-// ── Validar campos obligatorios ──
 function validar() {
   errores.value = {}
 
-  if (!form.value.nombre)   errores.value.nombre   = 'El nombre es obligatorio'
+  // Campos obligatorios
+  if (!form.value.nombre) errores.value.nombre = 'El nombre es obligatorio'
   if (!form.value.apellido) errores.value.apellido = 'El apellido es obligatorio'
-  if (!form.value.ci)       errores.value.ci       = 'El CI es obligatorio'
-  if (!form.value.email)    errores.value.email    = 'El email es obligatorio'
-  if (!form.value.rol)      errores.value.rol      = 'El rol es obligatorio'
+  if (!form.value.ci) errores.value.ci = 'El CI es obligatorio'
+  if (!form.value.email) errores.value.email = 'El email es obligatorio'
+  if (!form.value.rol) errores.value.rol = 'El rol es obligatorio'
 
-  // Contraseña solo obligatoria al crear
+  // Validación de contraseña
   if (!editando.value) {
-    if (!form.value.password)
+    // Al crear: contraseña obligatoria
+    if (!form.value.password) {
       errores.value.password = 'La contraseña es obligatoria'
-    if (form.value.password !== form.value.confirmar)
+    } else if (!passwordValida.value) {
+      errores.value.password = 'La contraseña no cumple los requisitos mínimos'
+    }
+    
+    if (form.value.password !== form.value.confirmar) {
       errores.value.confirmar = 'Las contraseñas no coinciden'
+    }
+  } else {
+    // Al editar: solo validar si se ingresó una nueva contraseña
+    if (form.value.password) {
+      if (!passwordValida.value) {
+        errores.value.password = 'La contraseña no cumple los requisitos mínimos'
+      }
+      
+      if (form.value.password !== form.value.confirmar) {
+        errores.value.confirmar = 'Las contraseñas no coinciden'
+      }
+    }
   }
 
   return Object.keys(errores.value).length === 0
 }
 
-// ── Guardar: crea o edita según modo ──
 async function guardar() {
   errorGeneral.value = ''
-  if (!validar()) return
+  
+  if (!validar()) {
+    errorGeneral.value = 'Por favor corrige los errores antes de continuar'
+    return
+  }
 
   cargando.value = true
 
   try {
-    // Usar FormData para enviar foto + datos juntos
     const datos = new FormData()
-    datos.append('nombre',   form.value.nombre)
+    datos.append('nombre', form.value.nombre)
     datos.append('apellido', form.value.apellido)
-    datos.append('ci',       form.value.ci)
-    datos.append('email',    form.value.email)
-    datos.append('rol',      form.value.rol)
+    datos.append('ci', form.value.ci)
+    datos.append('email', form.value.email)
+    datos.append('rol', form.value.rol)
+    datos.append('activo', form.value.activo)
 
     if (form.value.telefono)
       datos.append('telefono', form.value.telefono)
 
+    // Solo enviar contraseña si se ingresó una
     if (form.value.password)
       datos.append('password', form.value.password)
 
@@ -234,22 +341,63 @@ async function guardar() {
       datos.append('foto', archivoFoto.value)
 
     if (editando.value) {
-      // PUT /api/usuarios/:id/
-      await actualizarUsuario(usuarioId.value, datos) 
+      await actualizarUsuario(usuarioId.value, datos)
     } else {
-      // POST /api/usuarios/
       await crearUsuario(datos)
     }
 
-    emit('guardado')  // avisa a UsuariosView que recargue la tabla
+    emit('guardado')
     emit('cerrar')
 
   } catch (e) {
+    console.error('Error al guardar usuario:', e)
     errorGeneral.value = e.response?.data?.email?.[0]
       || e.response?.data?.ci?.[0]
+      || e.response?.data?.password?.[0]
       || 'Error al guardar, intenta de nuevo'
   } finally {
     cargando.value = false
   }
 }
 </script>
+
+<style scoped>
+.requisitos-password {
+  margin-top: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border-left: 3px solid #3b82f6;
+}
+
+.requisitos-password ul {
+  list-style: none;
+}
+
+.requisitos-password li {
+  color: #64748b;
+  margin: 4px 0;
+}
+
+.requisitos-password li.cumplido {
+  color: #10b981;
+  font-weight: 500;
+}
+
+.input-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon input {
+  flex: 1;
+  padding-right: 40px;
+}
+
+.input-icon span {
+  position: absolute;
+  right: 12px;
+  font-size: 1.2rem;
+}
+</style>

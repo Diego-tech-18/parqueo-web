@@ -93,22 +93,31 @@ export function useEspacios() {
   }
 
   
-  async function cargarMapa() {
-    cargando.value = true
-    errorCarga.value = ''
+ async function cargarMapa() {
+  cargando.value = true
+  errorCarga.value = ''
 
-    try {
-      const respuesta = await getMapaCompleto()
-      mapaCompleto.value = respuesta.data
-    } catch (error) {
-      console.error('Error al cargar mapa:', error)
-      errorCarga.value = 'No se pudo cargar el mapa del parqueo.'
-      mapaCompleto.value = []
-    } finally {
-      cargando.value = false
-    }
+  try {
+    const respuesta = await getMapaCompleto()
+    
+    // Ordenar espacios de cada sección por número
+    mapaCompleto.value = respuesta.data.map(seccion => ({
+      ...seccion,
+      espacios: seccion.espacios ? seccion.espacios.sort((a, b) => {
+        const numA = parseInt(a.numero.replace(/\D/g, '')) || 0
+        const numB = parseInt(b.numero.replace(/\D/g, '')) || 0
+        return numA - numB
+      }) : []
+    }))
+    
+  } catch (error) {
+    console.error('Error al cargar mapa:', error)
+    errorCarga.value = 'No se pudo cargar el mapa del parqueo.'
+    mapaCompleto.value = []
+  } finally {
+    cargando.value = false
   }
-
+}
  
   async function crear(datosEspacio) {
     try {
@@ -168,33 +177,36 @@ export function useEspacios() {
 
 
   async function cambiarEstado(id, nuevoEstado, notas = '') {
-    try {
-      await cambiarEstadoEspacio(id, nuevoEstado, notas)
-      
-      // Actualizar en el estado local sin recargar todo
-      const espacio = espacios.value.find(e => e.id === id)
-      if (espacio) {
-        espacio.estado = nuevoEstado
-        if (notas) espacio.notas = notas
-      }
-      
-      // También actualizar en el mapa si está cargado
-      mapaCompleto.value.forEach(seccion => {
-        const espacioEnMapa = seccion.espacios?.find(e => e.id === id)
-        if (espacioEnMapa) {
-          espacioEnMapa.estado = nuevoEstado
-          if (notas) espacioEnMapa.notas = notas
-        }
-      })
-      
-      mostrarExito('Estado actualizado')
-      return true
-    } catch (error) {
-      console.error('Error al cambiar estado:', error)
-      mostrarError('No se pudo cambiar el estado')
-      return false
+  try {
+    await cambiarEstadoEspacio(id, {
+      estado: nuevoEstado,
+      notas: notas
+    })
+    
+    // Actualizar en el estado local sin recargar todo
+    const espacio = espacios.value.find(e => e.id === id)
+    if (espacio) {
+      espacio.estado = nuevoEstado
+      if (notas) espacio.notas = notas
     }
+    
+    // También actualizar en el mapa si está cargado
+    mapaCompleto.value.forEach(seccion => {
+      const espacioEnMapa = seccion.espacios?.find(e => e.id === id)
+      if (espacioEnMapa) {
+        espacioEnMapa.estado = nuevoEstado
+        if (notas) espacioEnMapa.notas = notas
+      }
+    })
+    
+    mostrarExito('Estado actualizado')
+    return true
+  } catch (error) {
+    console.error('Error al cambiar estado:', error)
+    mostrarError('No se pudo cambiar el estado')
+    return false
   }
+}
 
 
   function buscarPorId(id) {

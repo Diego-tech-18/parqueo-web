@@ -47,7 +47,7 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #475569;
+  color: #2661b5;
 }
 
 .campo input,
@@ -58,6 +58,9 @@
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 0.95rem;
+  background: white;     /* ← Fondo blanco */
+  color: #1e293b;           /* ← Texto oscuro */
+ 
 }
 
 .campo input:focus,
@@ -152,6 +155,9 @@
 
 .input-con-boton input {
   flex: 1;
+  background: white;     /* ← Fondo blanco */
+  color: #1e293b;        /* ← Texto oscuro */
+  border: 1px solid #cbd5e1; 
 }
 
 .input-con-boton button {
@@ -284,4 +290,34 @@
 .badge-estado.finalizado {
   background: #d1fae5;
   color: #065f46;
+}
+/* ══════════════════════════════════════════════════════════════
+   Campo de hora - label y valor en la misma línea
+   ══════════════════════════════════════════════════════════════ */
+
+.campo-hora {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+}
+
+.campo-hora label {
+  font-weight: 600;
+  color: #1e40af;
+  font-size: 0.95rem;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.valor-hora {
+  font-size: 1.2rem;
+  font-weight: 300;
+  color: #1e40af;
+  letter-spacing: 2px;
+  font-family: 'JetBrains Mono', monospace;
 }

@@ -229,15 +229,25 @@
               ></textarea>
             </div>
 
-            <!-- Botón registrar -->
-            <button 
-              class="btn-principal" 
-              @click="registrarEntradaDesdeMap"
-              :disabled="!formEntrada.placa || cargandoRegistro"
-              style="width: 100%; margin-top: 10px;"
-            >
-              {{ cargandoRegistro ? 'Registrando...' : '📥 Registrar Entrada' }}
-            </button>
+            
+            <!-- Botones del modal -->
+            <div class="botones-modal-mapa">
+              <button 
+                class="btn-principal" 
+                @click="registrarEntradaDesdeMap"
+                :disabled="!formEntrada.placa || cargandoRegistro"
+              >
+                {{ cargandoRegistro ? 'Registrando...' : '📥 Registrar Entrada' }}
+              </button>
+              
+              <button 
+                class="btn-fuera-servicio" 
+                @click="marcarFueraServicio"
+                :disabled="cargandoRegistro"
+              >
+                🔧 Fuera de Servicio
+              </button>
+            </div>
           </div>
         </div>
 
@@ -342,6 +352,8 @@ import SidebarNav from '@/components/SidebarNav.vue'
 import { useEspacios } from '@/composables/useEspacios'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistros } from '@/composables/useRegistros'
+import { cambiarEstadoEspacio } from '@/api/espacios'
+
 
 
 const sidebarAbierto = ref(false)
@@ -411,19 +423,24 @@ const estadisticasGenerales = computed(() => {
   }
 })
 
-
 function abrirDetalle(espacio) {
   espacioSeleccionado.value = espacio
   
   // Determinar tipo de modal según el espacio
   if (espacio.seccion_tipo === 'ROTATIVOS') {
-    // Espacios rotativos: entrada/salida
+    // Espacios rotativos
     if (espacio.estado === 'LIBRE') {
       tipoModal.value = 'entrada'
     } else if (espacio.estado === 'OCUPADO') {
       tipoModal.value = 'salida'
       // Buscar el registro activo
       buscarRegistroDelEspacio(espacio.id)
+    } else if (espacio.estado === 'FUERA_SERVICIO') {
+      // Fuera de servicio: mostrar info
+      tipoModal.value = 'info'
+    } else {
+      // Cualquier otro estado: info
+      tipoModal.value = 'info'
     }
   } else {
     // Espacios asignados: solo info y cambio estado
@@ -539,6 +556,48 @@ async function registrarSalidaDesdeMap() {
   }
 }
 
+//boton fuera de servicio
+
+async function marcarFueraServicio() {
+  if (!espacioSeleccionado.value) return
+  
+  const confirmado = confirm(
+    `¿Marcar espacio ${espacioSeleccionado.value.numero} como FUERA DE SERVICIO?\n\n` +
+    'El espacio quedará bloqueado para reparaciones/mantenimiento.'
+  )
+  
+  if (!confirmado) return
+  
+  cargandoRegistro.value = true
+  
+  try {
+    await cambiarEstadoEspacio(espacioSeleccionado.value.id, {
+      estado: 'FUERA_SERVICIO',
+      notas: 'Espacio en mantenimiento/reparación'
+    })
+    
+    // Recargar mapa
+    await cargarMapa()
+    
+    // Cerrar modal
+    espacioSeleccionado.value = null
+    
+    // Limpiar formulario
+    formEntrada.value = {
+      placa: '',
+      tipo_vehiculo: 'AUTO',
+      notas: ''
+    }
+    
+    alert('✅ Espacio marcado como FUERA DE SERVICIO')
+    
+  } catch (error) {
+    console.error('Error completo:', error)
+    alert('❌ Error al marcar espacio: ' + error.message)
+  } finally {
+    cargandoRegistro.value = false
+  }
+}
 /**
  * Formatea fecha para mostrar
  */
@@ -552,6 +611,7 @@ function formatearFecha(fecha) {
   const minutos = String(d.getMinutes()).padStart(2, '0')
   return `${dia}/${mes}/${año} ${horas}:${minutos}`
 }
+
 
 
 /**

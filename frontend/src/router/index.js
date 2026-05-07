@@ -9,6 +9,7 @@ const routes = [
   { path: '/videos', component: () => import('@/views/VideosView.vue'),     meta: { requiresAuth: true }},
   { path: '/mapa',     component: () => import('@/views/MapaParqueoView.vue'), meta: { requiresAuth: true } },
   { path: '/config-espacios', component: () => import('@/views/ConfigEspaciosView.vue'), meta: { requiresAuth: true, soloAdmin: true } },
+  { path: '/config-espacios/seccion/:id', component: () => import('@/views/EspaciosSeccionView.vue'), meta: { requiresAuth: true, soloAdmin: true } },
   { path: '/entradas-salidas', component: () => import('@/views/EntradasSalidasView.vue'), meta: { requiresAuth: true } },
 ]
 

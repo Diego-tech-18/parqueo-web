@@ -71,8 +71,8 @@ class UsuarioListView(APIView):
     permission_classes = [SoloAdministrador]  # requiere token JWT
 
     def get(self, request):
-        """Devuelve todos los usuarios ordenados por nombre"""
-        usuarios   = Usuario.objects.all().order_by('nombre')
+       #Devuelve solo usuarios activos ordenados por nombre"""
+        usuarios = Usuario.objects.filter(activo=True).order_by('nombre')
         serializer = UsuarioSerializer(
             usuarios,
             many=True,
@@ -147,7 +147,7 @@ class UsuarioDetailView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
-        """Elimina un usuario por su ID"""
+        #Desactiva un usuario (soft delete) con validaciones de seguridad"""
         usuario = self.get_object(pk)
         if not usuario:
             return Response(
@@ -155,10 +155,34 @@ class UsuarioDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        usuario.delete()
+        # 🚫 PROTECCIÓN 1: No puedes desactivarte a ti mismo
+        if usuario.id == request.user.id:
+            return Response(
+                {'error': 'No puedes desactivar tu propia cuenta'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 🚫 PROTECCIÓN 2: Debe quedar al menos 1 admin activo
+        if usuario.rol == 'Administrador':
+            # Contar admins activos (excluyendo el que se va a desactivar)
+            admins_activos = Usuario.objects.filter(
+                rol='Administrador',
+                activo=True
+            ).exclude(id=usuario.id).count()
+            
+            if admins_activos == 0:
+                return Response(
+                    {'error': 'No puedes desactivar al último administrador del sistema'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # ✅ Soft delete: solo desactivar, no eliminar
+        usuario.activo = False
+        usuario.save(update_fields=['activo'])
+        
         return Response(
-            {'mensaje': 'Usuario eliminado correctamente'},
-            status=status.HTTP_204_NO_CONTENT
+            {'mensaje': f'Usuario {usuario.nombre} desactivado correctamente'},
+            status=status.HTTP_200_OK
         )
     
     # ── Ping: solo para mantener Supabase despierto ──

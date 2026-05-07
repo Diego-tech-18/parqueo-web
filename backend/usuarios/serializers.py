@@ -18,12 +18,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'email',
             'nombre',
             'apellido',
-            'ci',          # carnet de identidad
+            'ci',  
+            'telefono',        
             'rol',
             'activo',
             'foto',        # imagen de perfil
             'password',    # solo escritura
             'creado_en',
+            
         ]
         read_only_fields = ['id', 'creado_en']
 

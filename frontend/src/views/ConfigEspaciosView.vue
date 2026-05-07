@@ -60,10 +60,12 @@
             </div>
 
             <!-- Cards de secciones -->
+            <!-- Cards de secciones -->
             <div 
               v-for="seccion in secciones" 
               :key="seccion.id"
-              :class="['seccion-card-admin', seccion.tipo.toLowerCase()]"
+              :class="['seccion-card-admin', 'clickable', seccion.tipo.toLowerCase()]"
+              @click="verEspaciosSeccion(seccion.id)"
             >
               <div class="seccion-card-header">
                 <div>
@@ -73,14 +75,14 @@
                 <div class="seccion-card-acciones">
                   <button 
                     class="btn-icon" 
-                    @click="abrirModalSeccion(seccion)"
+                    @click.stop="abrirModalSeccion(seccion)"
                     title="Editar"
                   >
                     ✏️
                   </button>
                   <button 
                     class="btn-icon" 
-                    @click="eliminarSeccion(seccion.id)"
+                    @click.stop="eliminarSeccion(seccion.id)"
                     title="Eliminar"
                   >
                     🗑️
@@ -106,6 +108,11 @@
                   <div class="stat-mini-label">Ocupados</div>
                 </div>
               </div>
+
+              <!-- Botón "Ver Espacios" -->
+              <button class="btn-ver-espacios" @click.stop="verEspaciosSeccion(seccion.id)">
+                Ver Espacios →
+              </button>
             </div>
 
           </div>
@@ -270,6 +277,7 @@ import '@/assets/css/usuarios.css'
 import '@/assets/css/espacios.css'
 import '@/assets/css/mapa.css'
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router' 
 import SidebarNav from '@/components/SidebarNav.vue'
 import SeccionForm from '@/components/forms/SeccionForm.vue'
 import EspacioForm from '@/components/forms/EspacioForm.vue'
@@ -283,7 +291,7 @@ import { useModal } from '@/composables/useModal'
 
 const sidebarAbierto = ref(false)
 const tabActiva = ref('secciones')
-
+const router = useRouter()  
 // ── Secciones ──
 const {
   secciones,
@@ -338,6 +346,8 @@ async function eliminarSeccion(id) {
 }
 
 
+
+
 // FUNCIONES - ESPACIOS
 
 function abrirModalEspacio(espacio = null) {
@@ -361,6 +371,11 @@ function formatearEstado(estado) {
   }
   return estados[estado] || estado
 }
+
+function verEspaciosSeccion(seccionId) {
+  router.push(`/config-espacios/seccion/${seccionId}`)
+}
+
 
 
 onMounted(() => {

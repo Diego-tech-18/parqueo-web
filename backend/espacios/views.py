@@ -267,7 +267,7 @@ class CambiarEstadoView(APIView):
         espacio.estado = nuevo_estado
         if notas:
             espacio.notas = notas
-        espacio.save(update_fields=['estado', 'notas', 'actualizado_en'])
+        espacio.save(update_fields=['estado', 'notas'])
         
         # Retornar solo los datos necesarios (más rápido)
         return Response({

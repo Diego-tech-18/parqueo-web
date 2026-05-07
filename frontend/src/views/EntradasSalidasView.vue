@@ -18,25 +18,24 @@
         <!-- ── Pestañas ── -->
         <div class="tabs">
           <button 
+            :class="['tab', { activo: tabActiva === 'historial' }]"
+            @click="tabActiva = 'historial'"
+          >
+            📋 Historial
+          </button>
+          <button 
             :class="['tab', { activo: tabActiva === 'entrada' }]"
             @click="tabActiva = 'entrada'"
           >
-            📥 Entrada
+            🚗 Entrada
           </button>
           <button 
             :class="['tab', { activo: tabActiva === 'salida' }]"
             @click="tabActiva = 'salida'"
           >
-            📤 Salida
-          </button>
-          <button 
-            :class="['tab', { activo: tabActiva === 'historial' }]"
-            @click="cambiarAHistorial"
-          >
-            📋 Historial
+            🚀 Salida
           </button>
         </div>
-
  
         <!-- TAB: ENTRADA -->
 
@@ -65,6 +64,12 @@
                 <option value="MOTO">Moto</option>
                 <option value="CAMIONETA">Camioneta</option>
               </select>
+            </div>
+
+            <!-- Hora actual -->
+            <div class="campo-hora">
+              <label>Hora de Ingreso:</label>
+              <div class="valor-hora">{{ horaActual }}</div>
             </div>
 
             <!-- Selección de espacio -->
@@ -333,7 +338,9 @@ import { useEspacios } from '@/composables/useEspacios'
 
 
 const sidebarAbierto = ref(false)
-const tabActiva = ref('entrada')
+const tabActiva = ref('historial')
+const vistaActual = ref('historial')
+const horaActual = ref('')
 
 // ── Composables ──
 const {
@@ -401,6 +408,18 @@ async function registrarEntrada() {
   }
 }
 
+  function actualizarHora() {
+  const ahora = new Date()
+  const horas = String(ahora.getHours()).padStart(2, '0')
+  const minutos = String(ahora.getMinutes()).padStart(2, '0')
+  const segundos = String(ahora.getSeconds()).padStart(2, '0')
+  horaActual.value = `${horas}:${minutos}:${segundos}`
+  }
+
+  // Actualizar cada segundo
+  setInterval(actualizarHora, 1000)
+  actualizarHora() // Llamar inmediatamente
+
 
 // FUNCIONES - SALIDA
 
@@ -465,5 +484,7 @@ function formatearFecha(fecha) {
 
 onMounted(() => {
   cargarEspacios()
+  cargarHistorial() 
 })
 </script>
+

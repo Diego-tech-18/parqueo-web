@@ -70,10 +70,10 @@ export function eliminarEspacio(id) {
 }
 
 
-export function cambiarEstadoEspacio(id, nuevoEstado, notas = '') {
+export function cambiarEstadoEspacio(id, datos) {
   return api.post(API_ENDPOINTS.ESPACIOS.CAMBIAR_ESTADO(id), {
-    estado: nuevoEstado,
-    notas: notas
+    estado: datos.estado,
+    notas: datos.notas || ''
   })
 }
 

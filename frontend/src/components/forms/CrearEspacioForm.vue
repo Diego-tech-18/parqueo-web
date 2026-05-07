@@ -5,7 +5,7 @@
 
       <!-- Cabecera -->
       <div class="modal-header">
-        <h2>{{ editando ? 'Editar Espacio' : 'Nuevo Espacio' }}</h2>
+        <h2> Crear Nuevo Espacio</h2>
         <button class="btn-x" @click="$emit('cerrar')">✕</button>
       </div>
 
@@ -20,13 +20,14 @@
               v-model="form.numero" 
               placeholder="Ej: A1, B5, VIP-01" 
               maxlength="20"
+              autofocus
             />
             <span class="error-campo" v-if="errores.numero">{{ errores.numero }}</span>
           </div>
 
           <div class="campo">
             <label>Sección <span class="req">*</span></label>
-            <select v-model="form.seccion"  :disabled="!!seccionPreseleccionada">
+            <select v-model="form.seccion" :disabled="!!seccionPreseleccionada">
               <option :value="null">Selecciona una sección</option>
               <option 
                 v-for="seccion in secciones" 
@@ -62,30 +63,14 @@
           </div>
         </div>
 
-        <!-- Fila 3: Estado y Activo -->
-        <div class="fila">
-          <div class="campo">
-            <label>Estado Inicial</label>
-            <select v-model="form.estado">
-              <option value="LIBRE">Libre</option>
-              <option value="OCUPADO">Ocupado</option>
-              <option value="FUERA_SERVICIO">Fuera de Servicio</option>
-            </select>
-          </div>
-
-          <div class="campo">
-            <label>
-              <input 
-                type="checkbox" 
-                v-model="form.activo"
-                style="width: auto; margin-right: 8px;"
-              />
-              Espacio activo
-            </label>
-            <small style="color: #64748b; display: block; margin-top: 5px;">
-              Si está desactivado, no se mostrará en el mapa
-            </small>
-          </div>
+        <!-- Estado inicial -->
+        <div class="campo">
+          <label>Estado Inicial</label>
+          <select v-model="form.estado">
+            <option value="LIBRE">Libre</option>
+            <option value="OCUPADO">Ocupado</option>
+            <option value="FUERA_SERVICIO">Fuera de Servicio</option>
+          </select>
         </div>
 
         <!-- Notas -->
@@ -107,7 +92,7 @@
       <div class="modal-footer">
         <button class="btn-cancelar" @click="$emit('cerrar')">Cancelar</button>
         <button class="btn-guardar" @click="guardar" :disabled="cargando">
-          {{ cargando ? 'Guardando...' : (editando ? 'Guardar Cambios' : 'Crear Espacio') }}
+          {{ cargando ? 'Creando...' : ' Crear Espacio' }}
         </button>
       </div>
 
@@ -116,25 +101,13 @@
 </template>
 
 <script setup>
-
-
-// FORMULARIO: ESPACIO - VORTEX
-
-
 import '@/assets/css/forms.css'
-import { ref, watch, onMounted } from 'vue'
-import { crearEspacio, actualizarEspacio, getSecciones } from '@/api/espacios'
-
+import { ref, onMounted } from 'vue'
+import { crearEspacio, getSecciones } from '@/api/espacios'
 
 // PROPS Y EVENTOS
-
-
 const props = defineProps({
-  espacioEditar: {
-    type: Object,
-    default: null  // null = modo crear, objeto = modo editar
-  },
-  seccionPreseleccionada: {  // ← AGREGAR
+  seccionPreseleccionada: {
     type: Number,
     default: null
   }
@@ -143,16 +116,13 @@ const props = defineProps({
 const emit = defineEmits(['cerrar', 'guardado'])
 
 // ESTADO
-
-
 const cargando = ref(false)
 const errorGeneral = ref('')
-const editando = ref(false)
 const secciones = ref([])
 
 const form = ref({
   numero: '',
-  seccion: '',
+  seccion: props.seccionPreseleccionada || null,
   estado: 'LIBRE',
   posicion_fila: 0,
   posicion_columna: 0,
@@ -162,39 +132,7 @@ const form = ref({
 
 const errores = ref({})
 
-
-// WATCH: Cargar datos si es edición
-
-
-watch(() => props.espacioEditar, (nuevoEspacio) => {
-  if (nuevoEspacio) {
-    // Modo edición
-    form.value = {
-      numero: nuevoEspacio.numero,
-      seccion: nuevoEspacio.seccion,
-      estado: nuevoEspacio.estado,
-      posicion_fila: nuevoEspacio.posicion_fila,
-      posicion_columna: nuevoEspacio.posicion_columna,
-      activo: nuevoEspacio.activo,
-      notas: nuevoEspacio.notas || ''
-    }
-  } else {
-    // Modo crear - usar sección preseleccionada
-    form.value = {
-      numero: '',
-      seccion: props.seccionPreseleccionada || null,  // ← USAR PROP
-      estado: 'LIBRE',
-      posicion_fila: 0,
-      posicion_columna: 0,
-      activo: true,
-      notas: ''
-    }
-  }
-}, { immediate: true })
-
-
 // FUNCIONES
-
 async function cargarSecciones() {
   try {
     const respuesta = await getSecciones()
@@ -204,9 +142,6 @@ async function cargarSecciones() {
   }
 }
 
-/**
- * Valida los campos del formulario
- */
 function validar() {
   errores.value = {}
 
@@ -221,9 +156,6 @@ function validar() {
   return Object.keys(errores.value).length === 0
 }
 
-/**
- * Guarda el espacio (crea o edita)
- */
 async function guardar() {
   errorGeneral.value = ''
   
@@ -242,29 +174,23 @@ async function guardar() {
       notas: form.value.notas || null,
     }
 
-    if (editando.value) {
-      await actualizarEspacio(props.espacioEditar.id, datos)
-    } else {
-      await crearEspacio(datos)
-    }
+    await crearEspacio(datos)
 
     emit('guardado')
     emit('cerrar')
 
   } catch (error) {
-    console.error('Error al guardar espacio:', error)
+    console.error('Error al crear espacio:', error)
     
     if (error.response?.data?.numero) {
       errores.value.numero = error.response.data.numero[0]
     } else {
-      errorGeneral.value = 'Error al guardar el espacio. Intenta de nuevo.'
+      errorGeneral.value = 'Error al crear el espacio. Intenta de nuevo.'
     }
   } finally {
     cargando.value = false
   }
 }
-
-// CICLO DE VIDA
 
 onMounted(() => {
   cargarSecciones()

@@ -179,7 +179,11 @@ function handleEditar(usuario) {
  * Elimina un usuario
  */
 async function handleEliminar(id) {
+  const confirmado = confirm('¿Estás seguro de desactivar este usuario?')
+  if (!confirmado) return
+  
   await eliminar(id)
+  await cargarUsuarios()  // ← AGREGAR ESTA LÍNEA (recargar lista)
 }
 
 /**
