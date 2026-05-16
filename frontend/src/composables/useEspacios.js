@@ -1,4 +1,3 @@
-
 import { ref, computed } from 'vue'
 import { 
   getEspacios, 
@@ -6,9 +5,11 @@ import {
   crearEspacio, 
   actualizarEspacio, 
   eliminarEspacio,
-  cambiarEstadoEspacio 
+  cambiarEstadoEspacio,
+  reactivarEspacio
 } from '@/api/espacios'
 import { useNotificaciones } from './useNotificaciones'
+import { useDebounce } from './useDebounce'
 
 
 
@@ -18,12 +19,17 @@ export function useEspacios() {
   // ── Notificaciones ──
   const { mostrarExito, mostrarError } = useNotificaciones()
 
-  // ── Estado ──
   const espacios = ref([])
   const mapaCompleto = ref([]) // Secciones con espacios anidados
   const cargando = ref(false)
   const errorCarga = ref('')
+
+  // El usuario escribe en `busqueda`. El filtrado usa `busquedaDebounced`,
+  // que se actualiza solo cuando el usuario deja de escribir 300ms.
+  // Esto evita re-filtrar listas grandes en cada tecla.
   const busqueda = ref('')
+  const busquedaDebounced = useDebounce(busqueda, 300)
+
   const filtroSeccion = ref(null) // null = todas las secciones
   const filtroEstado = ref(null)  // null = todos los estados
 
@@ -41,9 +47,9 @@ export function useEspacios() {
       resultado = resultado.filter(e => e.estado === filtroEstado.value)
     }
 
-    // Filtrar por búsqueda
-    if (busqueda.value) {
-      const textoBusqueda = busqueda.value.toLowerCase()
+    // Filtrar por búsqueda (usando el valor con debounce)
+    if (busquedaDebounced.value) {
+      const textoBusqueda = busquedaDebounced.value.toLowerCase()
       resultado = resultado.filter(espacio => {
         const textoCompleto = `${espacio.numero} ${espacio.seccion_nombre || ''}`.toLowerCase()
         return textoCompleto.includes(textoBusqueda)
@@ -126,8 +132,27 @@ export function useEspacios() {
       mostrarExito('Espacio creado exitosamente')
       return true
     } catch (error) {
+      // ── CASO ESPECIAL: 409 + espacio_id ──
+      // El backend detectó un espacio INACTIVO con el mismo número.
+      // Ofrecemos reactivarlo en lugar de crear uno nuevo.
+      // (No es un error real, así que no lo loggeamos como error.)
+      if (error.response?.status === 409 && error.response?.data?.espacio_id) {
+        const { error: mensajeError, espacio_id } = error.response.data
+
+        const quiereReactivar = confirm(
+          `${mensajeError}\n\nPresiona OK para reactivar el espacio existente, ` +
+          `o Cancelar para usar otro número.`
+        )
+
+        if (quiereReactivar) {
+          return await reactivar(espacio_id)
+        }
+        return false
+      }
+
+      // Errores reales sí se loggean
       console.error('Error al crear espacio:', error)
-      
+
       if (error.response?.status === 400) {
         const errores = error.response.data
         if (errores.numero) {
@@ -138,10 +163,28 @@ export function useEspacios() {
       } else {
         mostrarError('No se pudo crear el espacio')
       }
-      
+
       return false
     }
   }
+
+/**
+ * Reactiva un espacio que había sido soft-deleted.
+ * Se llama automáticamente desde crear() cuando hay conflicto con
+ * un espacio inactivo del mismo número.
+ */
+async function reactivar(id) {
+  try {
+    await reactivarEspacio(id)
+    await cargarEspacios() // Recargar la lista
+    mostrarExito('Espacio reactivado exitosamente')
+    return true
+  } catch (error) {
+    console.error('Error al reactivar espacio:', error)
+    mostrarError('No se pudo reactivar el espacio')
+    return false
+  }
+}
 
 
   async function actualizar(id, datosEspacio) {
@@ -241,9 +284,11 @@ export function useEspacios() {
     porcentajeOcupacion,
 
     // Funciones
+    // Funciones
     cargarEspacios,
     cargarMapa,
     crear,
+    reactivar,
     actualizar,
     eliminar,
     cambiarEstado,

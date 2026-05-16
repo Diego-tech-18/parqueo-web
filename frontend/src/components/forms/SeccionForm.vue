@@ -33,6 +33,7 @@
           </select>
           <span class="error-campo" v-if="errores.tipo">{{ errores.tipo }}</span>
         </div>
+        
 
         <!-- Descripción -->
         <div class="campo">
@@ -65,8 +66,8 @@
 //  FORMULARIO: SECCIÓN - VORTEX 
 
 import '@/assets/css/forms.css'
-import { ref, watch } from 'vue'
-import { crearSeccion, actualizarSeccion } from '@/api/espacios'
+import { ref, watch, computed } from 'vue'
+import { useSecciones } from '@/composables/useSecciones'
 
 
 // PROPS Y EVENTOS
@@ -80,11 +81,16 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar', 'guardado'])
 
+// Composable: lógica de secciones (incluye 409 + soft delete + reactivar)
+const { crear, actualizar } = useSecciones()
+
 // ESTADO
 
 const cargando = ref(false)
 const errorGeneral = ref('')
-const editando = ref(false)
+
+// Modo (crear/editar) calculado desde la prop. Reactivo, sin bug.
+const editando = computed(() => props.seccionEditar !== null)
 
 const form = ref({
   nombre: '',
@@ -99,11 +105,18 @@ const errores = ref({})
 
 watch(() => props.seccionEditar, (seccion) => {
   if (seccion) {
-    editando.value = true
+    // Modo edición: cargar datos
     form.value = {
       nombre: seccion.nombre,
       tipo: seccion.tipo,
       descripcion: seccion.descripcion || '',
+    }
+  } else {
+    // Modo crear: limpiar
+    form.value = {
+      nombre: '',
+      tipo: '',
+      descripcion: '',
     }
   }
 }, { immediate: true })
@@ -133,35 +146,34 @@ function validar() {
  
 async function guardar() {
   errorGeneral.value = ''
-  
+
   if (!validar()) return
 
   cargando.value = true
 
+  const datos = {
+    nombre: form.value.nombre,
+    tipo: form.value.tipo,
+    descripcion: form.value.descripcion || null,
+  }
+
   try {
-    const datos = {
-      nombre: form.value.nombre,
-      tipo: form.value.tipo,
-      descripcion: form.value.descripcion || null,
-    }
+    // Llamar al composable (que maneja 409, soft delete, notificaciones)
+    const exito = editando.value
+      ? await actualizar(props.seccionEditar.id, datos)
+      : await crear(datos)
 
-    if (editando.value) {
-      await actualizarSeccion(props.seccionEditar.id, datos)
-    } else {
-      await crearSeccion(datos)
+    if (exito) {
+      emit('guardado')
+      emit('cerrar')
     }
-
-    emit('guardado')
-    emit('cerrar')
+    // Si exito === false, el composable ya mostró la notificación.
+    // El formulario queda abierto para que el usuario pueda corregir o usar otro nombre.
 
   } catch (error) {
-    console.error('Error al guardar sección:', error)
-    
-    if (error.response?.data?.nombre) {
-      errores.value.nombre = error.response.data.nombre[0]
-    } else {
-      errorGeneral.value = 'Error al guardar la sección. Intenta de nuevo.'
-    }
+    // Solo errores inesperados llegan aquí
+    console.error('Error inesperado al guardar sección:', error)
+    errorGeneral.value = 'Error al guardar la sección. Intenta de nuevo.'
   } finally {
     cargando.value = false
   }

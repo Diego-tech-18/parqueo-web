@@ -116,25 +116,27 @@
 </template>
 
 <script setup>
-
-
-// FORMULARIO: ESPACIO - VORTEX
-
+// ════════════════════════════════════════════════════════════════════
+// FORMULARIO: ESPACIO (crear y editar) - VORTEX
+// ════════════════════════════════════════════════════════════════════
+//
+// Componente "tonto" — solo presenta el formulario y emite eventos.
+// La lógica de negocio (crear, editar, manejar 409 de soft delete,
+// notificaciones) vive en el composable useEspacios.
 
 import '@/assets/css/forms.css'
-import { ref, watch, onMounted } from 'vue'
-import { crearEspacio, actualizarEspacio, getSecciones } from '@/api/espacios'
+import { ref, watch, onMounted, computed } from 'vue'
+import { getSecciones } from '@/api/espacios'
+import { useEspacios } from '@/composables/useEspacios'
 
-
-// PROPS Y EVENTOS
-
+// ── PROPS Y EVENTOS ──────────────────────────────────────────────────
 
 const props = defineProps({
   espacioEditar: {
     type: Object,
     default: null  // null = modo crear, objeto = modo editar
   },
-  seccionPreseleccionada: {  // ← AGREGAR
+  seccionPreseleccionada: {
     type: Number,
     default: null
   }
@@ -142,13 +144,17 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar', 'guardado'])
 
-// ESTADO
+// ── Composable: lógica de espacios ──────────────────────────────────
+const { crear, actualizar } = useEspacios()
 
+// ── ESTADO ──────────────────────────────────────────────────────────
 
 const cargando = ref(false)
 const errorGeneral = ref('')
-const editando = ref(false)
 const secciones = ref([])
+
+// Modo (crear / editar) calculado a partir de la prop. Reactivo, sin bug.
+const editando = computed(() => props.espacioEditar !== null)
 
 const form = ref({
   numero: '',
@@ -162,13 +168,11 @@ const form = ref({
 
 const errores = ref({})
 
-
-// WATCH: Cargar datos si es edición
-
+// ── WATCH: cargar datos si cambia el modo (crear ↔ editar) ──────────
 
 watch(() => props.espacioEditar, (nuevoEspacio) => {
   if (nuevoEspacio) {
-    // Modo edición
+    // Modo edición: copiar valores del espacio
     form.value = {
       numero: nuevoEspacio.numero,
       seccion: nuevoEspacio.seccion,
@@ -179,10 +183,10 @@ watch(() => props.espacioEditar, (nuevoEspacio) => {
       notas: nuevoEspacio.notas || ''
     }
   } else {
-    // Modo crear - usar sección preseleccionada
+    // Modo crear
     form.value = {
       numero: '',
-      seccion: props.seccionPreseleccionada || null,  // ← USAR PROP
+      seccion: props.seccionPreseleccionada || null,
       estado: 'LIBRE',
       posicion_fila: 0,
       posicion_columna: 0,
@@ -192,8 +196,7 @@ watch(() => props.espacioEditar, (nuevoEspacio) => {
   }
 }, { immediate: true })
 
-
-// FUNCIONES
+// ── FUNCIONES ───────────────────────────────────────────────────────
 
 async function cargarSecciones() {
   try {
@@ -204,9 +207,6 @@ async function cargarSecciones() {
   }
 }
 
-/**
- * Valida los campos del formulario
- */
 function validar() {
   errores.value = {}
 
@@ -221,50 +221,46 @@ function validar() {
   return Object.keys(errores.value).length === 0
 }
 
-/**
- * Guarda el espacio (crea o edita)
- */
 async function guardar() {
   errorGeneral.value = ''
-  
+
   if (!validar()) return
 
   cargando.value = true
 
+  const datos = {
+    numero: form.value.numero,
+    seccion: form.value.seccion,
+    estado: form.value.estado,
+    posicion_fila: form.value.posicion_fila,
+    posicion_columna: form.value.posicion_columna,
+    activo: form.value.activo,
+    notas: form.value.notas || null,
+  }
+
   try {
-    const datos = {
-      numero: form.value.numero,
-      seccion: form.value.seccion,
-      estado: form.value.estado,
-      posicion_fila: form.value.posicion_fila,
-      posicion_columna: form.value.posicion_columna,
-      activo: form.value.activo,
-      notas: form.value.notas || null,
-    }
+    // Llamar al composable (que maneja 409, soft delete, notificaciones)
+    const exito = editando.value
+      ? await actualizar(props.espacioEditar.id, datos)
+      : await crear(datos)
 
-    if (editando.value) {
-      await actualizarEspacio(props.espacioEditar.id, datos)
-    } else {
-      await crearEspacio(datos)
+    if (exito) {
+      emit('guardado')
+      emit('cerrar')
     }
-
-    emit('guardado')
-    emit('cerrar')
+    // Si exito === false, el composable ya mostró la notificación de error.
+    // El formulario queda abierto para que el usuario pueda corregir.
 
   } catch (error) {
-    console.error('Error al guardar espacio:', error)
-    
-    if (error.response?.data?.numero) {
-      errores.value.numero = error.response.data.numero[0]
-    } else {
-      errorGeneral.value = 'Error al guardar el espacio. Intenta de nuevo.'
-    }
+    // Solo errores inesperados llegan aquí (los esperados los maneja el composable)
+    console.error('Error inesperado al guardar espacio:', error)
+    errorGeneral.value = 'Error al guardar el espacio. Intenta de nuevo.'
   } finally {
     cargando.value = false
   }
 }
 
-// CICLO DE VIDA
+// ── CICLO DE VIDA ───────────────────────────────────────────────────
 
 onMounted(() => {
   cargarSecciones()

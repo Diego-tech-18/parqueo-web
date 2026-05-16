@@ -36,6 +36,14 @@ export function eliminarSeccion(id) {
   return api.delete(API_ENDPOINTS.SECCIONES.DELETE(id))
 }
 
+/**
+ * Reactiva una sección que estaba soft-deleted (activo=false).
+ * Preserva el ID original y los espacios/registros asociados.
+ */
+export function reactivarSeccion(id) {
+  return api.post(API_ENDPOINTS.SECCIONES.REACTIVAR(id))
+}
+
 
 // ESPACIOS
 
@@ -75,6 +83,16 @@ export function cambiarEstadoEspacio(id, datos) {
     estado: datos.estado,
     notas: datos.notas || ''
   })
+}
+
+/**
+ * Reactiva un espacio que estaba soft-deleted (activo=false).
+ * Preserva el ID original y los registros históricos asociados.
+ * @param {number} id - ID del espacio inactivo
+ * @returns {Promise}
+ */
+export function reactivarEspacio(id) {
+  return api.post(API_ENDPOINTS.ESPACIOS.REACTIVAR(id))
 }
 
 

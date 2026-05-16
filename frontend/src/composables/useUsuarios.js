@@ -1,5 +1,6 @@
 
 import { ref, computed } from 'vue'
+import { useDebounce } from './useDebounce'
 import { getUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario } from '@/api/usuarios'
 import { useNotificaciones } from './useNotificaciones'
 
@@ -15,15 +16,16 @@ export function useUsuarios() {
   const cargando = ref(false)
   const errorCarga = ref('')
   const busqueda = ref('')
+  const busquedaDebounced = useDebounce(busqueda, 300)
 
   
    // Filtra usuarios por nombre, apellido, email o CI
    
   const usuariosFiltrados = computed(() => {
-    if (!busqueda.value) return usuarios.value
+    if (!busquedaDebounced.value) return usuarios.value
 
-    const textoBusqueda = busqueda.value.toLowerCase()
-    
+    const textoBusqueda = busquedaDebounced.value.toLowerCase()
+
     return usuarios.value.filter(usuario => {
       const textoCompleto = `${usuario.nombre} ${usuario.apellido} ${usuario.email} ${usuario.ci}`.toLowerCase()
       return textoCompleto.includes(textoBusqueda)

@@ -297,8 +297,34 @@
 
                 <div class="info-item" style="grid-column: 1 / -1;">
                   <span class="info-label">Tarifa Estimada:</span>
-                  <span class="info-valor tarifa">Bs. {{ registroActual.tarifa_estimada }}</span>
+                  <span
+                    v-if="registroActual.tipo_vehiculo === 'MOTO'"
+                    class="info-valor"
+                    style="color:#d97706; font-weight:600;"
+                  >
+                    
+                  </span>
+                  <span v-else class="info-valor tarifa">Bs. {{ registroActual.tarifa_estimada }}</span>
                 </div>
+              </div>
+
+               <!-- Monto manual: SOLO para motos -->
+              <div
+                v-if="registroActual.tipo_vehiculo === 'MOTO'"
+                class="campo"
+                style="margin-top: 20px;"
+              >
+                <label>Monto a cobrar (Bs.) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  v-model="montoManual"
+                  placeholder="Ej: 5.00"
+                />
+                <small style="color:#6b7280;">
+                  Las motos se cobran de forma manual.
+                </small>
               </div>
 
               <!-- Notas de salida -->
@@ -352,7 +378,9 @@ import SidebarNav from '@/components/SidebarNav.vue'
 import { useEspacios } from '@/composables/useEspacios'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistros } from '@/composables/useRegistros'
-import { cambiarEstadoEspacio } from '@/api/espacios'
+import { useNotificaciones } from '@/composables/useNotificaciones'
+
+
 
 
 
@@ -378,6 +406,8 @@ const {
 } = useRegistros()
 
 // ── Modal de detalle ──
+
+const { mostrarError } = useNotificaciones()
 const espacioSeleccionado = ref(null)
 
 const tipoModal = ref('info') // 'info', 'entrada', 'salida'
@@ -391,6 +421,7 @@ const formEntrada = ref({
 
 // Notas de salida
 const notasSalida = ref('')
+const montoManual = ref(null)
 
 // ── Computed: Estadísticas calculadas desde mapaCompleto ──
 const estadisticasGenerales = computed(() => {
@@ -423,23 +454,39 @@ const estadisticasGenerales = computed(() => {
   }
 })
 
-function abrirDetalle(espacio) {
+/**
+ * Helper: actualiza localmente el estado de un espacio en mapaCompleto.
+ * Esto evita tener que recargar el mapa entero después de cada cambio.
+ * Las estadísticas (computed) se recalculan automáticamente.
+ */
+function actualizarEstadoEnMapa(espacioId, nuevoEstado) {
+  for (const seccion of mapaCompleto.value) {
+    if (!seccion.espacios) continue
+    const espacio = seccion.espacios.find(e => e.id === espacioId)
+    if (espacio) {
+      espacio.estado = nuevoEstado
+      return  // ya lo encontramos, salir
+    }
+  }
+}
+
+async function abrirDetalle(espacio) {
   espacioSeleccionado.value = espacio
-  
+
+  // ⚠️ IMPORTANTE: limpiar registro previo para evitar mostrar datos viejos
+  registroActual.value = null
+
   // Determinar tipo de modal según el espacio
   if (espacio.seccion_tipo === 'ROTATIVOS') {
-    // Espacios rotativos
     if (espacio.estado === 'LIBRE') {
       tipoModal.value = 'entrada'
     } else if (espacio.estado === 'OCUPADO') {
       tipoModal.value = 'salida'
-      // Buscar el registro activo
-      buscarRegistroDelEspacio(espacio.id)
+      // Esperar a que la búsqueda termine antes de continuar
+      await buscarRegistroDelEspacio(espacio.id)
     } else if (espacio.estado === 'FUERA_SERVICIO') {
-      // Fuera de servicio: mostrar info
       tipoModal.value = 'info'
     } else {
-      // Cualquier otro estado: info
       tipoModal.value = 'info'
     }
   } else {
@@ -453,16 +500,25 @@ function abrirDetalle(espacio) {
  */
 async function buscarRegistroDelEspacio(espacioId) {
   const resultado = await buscarPorEspacioId(espacioId)
-  
+
   if (resultado.exito) {
     registroActual.value = resultado.data
+  } else {
+    // Si no encontramos el registro activo, avisar al usuario y limpiar el estado.
+    // Esto previene que después se intente registrar salida con datos vacíos.
+    registroActual.value = null
+    mostrarError(
+      'No se encontró el registro de entrada de este vehículo. ' +
+      'El espacio puede tener un estado inconsistente.'
+    )
   }
 }
 
 function cerrarDetalle() {
   espacioSeleccionado.value = null
+  montoManual.value = null
+  notasSalida.value = ''
 }
-
 
 
 /**
@@ -494,33 +550,24 @@ async function handleCambiarEstado(nuevoEstado) {
  */
 async function registrarEntradaDesdeMap() {
   if (!espacioSeleccionado.value) return
-  
+
   const datos = {
     placa: formEntrada.value.placa,
     tipo_vehiculo: formEntrada.value.tipo_vehiculo,
     espacio: espacioSeleccionado.value.id,
     notas: formEntrada.value.notas,
   }
-  
+
   const resultado = await entrada(datos)
-  
+
   if (resultado.exito) {
-    // Actualizar estado del espacio en el mapa
-    mapaCompleto.value.forEach(seccion => {
-      if (seccion.espacios) {
-        const espacio = seccion.espacios.find(e => e.id === espacioSeleccionado.value.id)
-        if (espacio) {
-          espacio.estado = 'OCUPADO'
-        }
-      }
-    })
-    
-    // Limpiar formulario y cerrar
+    // Actualización local en memoria → las estadísticas (computed) se
+    // recalculan automáticamente. No hace falta recargar el mapa entero.
+    actualizarEstadoEnMapa(espacioSeleccionado.value.id, 'OCUPADO')
+
+    // Limpiar formulario y cerrar modal
     formEntrada.value = { placa: '', tipo_vehiculo: 'AUTO', notas: '' }
     cerrarDetalle()
-    
-    // Recargar mapa para actualizar estadísticas
-    await cargarMapa()
   }
 }
 
@@ -528,15 +575,35 @@ async function registrarEntradaDesdeMap() {
  * Registra salida desde el mapa
  */
 async function registrarSalidaDesdeMap() {
-  if (!registroActual.value) return
-  
-  const resultado = await salida({
+  // Validación robusta del registro
+  if (!registroActual.value || !registroActual.value.id) {
+    mostrarError('No se encontró el registro de entrada de este vehículo')
+    return
+  }
+
+  const esMoto = registroActual.value.tipo_vehiculo === 'MOTO'
+
+  // Si es moto, el monto manual es OBLIGATORIO
+  if (esMoto) {
+    if (montoManual.value === null || montoManual.value === '' || Number(montoManual.value) < 0) {
+      mostrarError('Debe ingresar un monto válido para la moto')
+      return
+    }
+  }
+
+  // Armar el payload
+  const payload = {
     registro_id: registroActual.value.id,
     notas: notasSalida.value,
-  })
-  
+  }
+  if (esMoto) {
+    payload.monto_manual = Number(montoManual.value)
+  }
+
+  const resultado = await salida(payload)
+
   if (resultado.exito) {
-    // Actualizar estado del espacio en el mapa
+    // Actualizar estado del espacio en el mapa (local)
     mapaCompleto.value.forEach(seccion => {
       if (seccion.espacios) {
         const espacio = seccion.espacios.find(e => e.id === espacioSeleccionado.value.id)
@@ -545,12 +612,13 @@ async function registrarSalidaDesdeMap() {
         }
       }
     })
-    
+
     // Limpiar y cerrar
     notasSalida.value = ''
+    montoManual.value = null
     limpiarRegistroActual()
     cerrarDetalle()
-    
+
     // Recargar mapa para actualizar estadísticas
     await cargarMapa()
   }
@@ -560,42 +628,28 @@ async function registrarSalidaDesdeMap() {
 
 async function marcarFueraServicio() {
   if (!espacioSeleccionado.value) return
-  
+
   const confirmado = confirm(
     `¿Marcar espacio ${espacioSeleccionado.value.numero} como FUERA DE SERVICIO?\n\n` +
     'El espacio quedará bloqueado para reparaciones/mantenimiento.'
   )
-  
+
   if (!confirmado) return
-  
-  cargandoRegistro.value = true
-  
-  try {
-    await cambiarEstadoEspacio(espacioSeleccionado.value.id, {
-      estado: 'FUERA_SERVICIO',
-      notas: 'Espacio en mantenimiento/reparación'
-    })
-    
-    // Recargar mapa
-    await cargarMapa()
-    
-    // Cerrar modal
-    espacioSeleccionado.value = null
-    
-    // Limpiar formulario
-    formEntrada.value = {
-      placa: '',
-      tipo_vehiculo: 'AUTO',
-      notas: ''
-    }
-    
-    alert('✅ Espacio marcado como FUERA DE SERVICIO')
-    
-  } catch (error) {
-    console.error('Error completo:', error)
-    alert('❌ Error al marcar espacio: ' + error.message)
-  } finally {
-    cargandoRegistro.value = false
+
+  // Usar el composable (que maneja la API + notificación)
+  const exito = await cambiarEstado(
+    espacioSeleccionado.value.id,
+    'FUERA_SERVICIO',
+    'Espacio en mantenimiento/reparación'
+  )
+
+  if (exito) {
+    // Actualización local en lugar de recargar todo el mapa
+    actualizarEstadoEnMapa(espacioSeleccionado.value.id, 'FUERA_SERVICIO')
+
+    // Cerrar modal y limpiar formulario
+    cerrarDetalle()
+    formEntrada.value = { placa: '', tipo_vehiculo: 'AUTO', notas: '' }
   }
 }
 /**

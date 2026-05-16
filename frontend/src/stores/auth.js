@@ -27,6 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
   function cerrarSesion() {
     usuario.value = null
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')   // ← AGREGADO: también limpiar el refresh
     localStorage.removeItem('usuario')
   }
 

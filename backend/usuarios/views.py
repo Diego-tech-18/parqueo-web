@@ -1,191 +1,150 @@
+"""
+════════════════════════════════════════════════════════════════════════
+VIEWS: USUARIOS - VORTEX
+════════════════════════════════════════════════════════════════════════
+
+Controladores DELGADOS.
+
+Responsabilidad de cada view:
+    1. Recibir el HTTP request.
+    2. Validar el formato de datos con un serializer.
+    3. Llamar al service correspondiente.
+    4. Serializar la respuesta y devolverla con el código HTTP correcto.
+
+NO contienen lógica de negocio — esa vive en services/.
+"""
+
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate
 
-from .models import Usuario
 from .serializers import UsuarioSerializer, LoginSerializer
-from .permissions import SoloAdministrador, AdministradorOEmpleado
+from .permissions import SoloAdministrador
+from .services.auth_service import AuthService
+from .services.usuario_service import UsuarioService
 
-# ────────────────────────────────────────────
+from core.http import manejar_excepciones_dominio
+from core.exceptions import DatosInvalidosError
+
+
+# ══════════════════════════════════════════════════════════════════════
 # LOGIN
 # POST /api/auth/login/
-# Recibe email y password → devuelve token JWT
-# ────────────────────────────────────────────
-class LoginView(APIView):
-    permission_classes = [AllowAny]  # no requiere estar logueado
+# ══════════════════════════════════════════════════════════════════════
 
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    @manejar_excepciones_dominio
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
-
         if not serializer.is_valid():
-            return Response(
-                {'error': 'Datos inválidos'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            raise DatosInvalidosError("Email o contraseña con formato inválido")
 
-        email    = serializer.validated_data['email']
-        password = serializer.validated_data['password']
+        # → al service
+        resultado = AuthService.login(
+            email=serializer.validated_data['email'],
+            password=serializer.validated_data['password'],
+        )
 
-        # Verifica email y contraseña en la BD
-        usuario = authenticate(request, username=email, password=password)
-
-        if not usuario:
-            return Response(
-                {'error': 'Email o contraseña incorrectos'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        if not usuario.activo:
-            return Response(
-                {'error': 'Usuario inactivo, contacte al administrador'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # Genera tokens JWT
-        refresh = RefreshToken.for_user(usuario)
-
-        # Devuelve token + datos del usuario al frontend
+        usuario = resultado['usuario']
         return Response({
-            'access' : str(refresh.access_token),  # token principal
-            'refresh': str(refresh),                # para renovar sesión
+            'access':  resultado['access'],
+            'refresh': resultado['refresh'],
             'usuario': {
-                'id'      : usuario.id,
-                'nombre'  : usuario.nombre,
+                'id':       usuario.id,
+                'nombre':   usuario.nombre,
                 'apellido': usuario.apellido,
-                'email'   : usuario.email,
-                'rol'     : usuario.rol,
-                'foto'    : request.build_absolute_uri(usuario.foto.url) if usuario.foto else None,
-            }
+                'email':    usuario.email,
+                'rol':      usuario.rol,
+                'foto':     request.build_absolute_uri(usuario.foto.url) if usuario.foto else None,
+            },
         }, status=status.HTTP_200_OK)
 
 
-# ────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
 # LISTAR Y CREAR USUARIOS
-# GET  /api/usuarios/  → devuelve lista
-# POST /api/usuarios/  → crea nuevo usuario
-# ────────────────────────────────────────────
+# GET  /api/usuarios/
+# POST /api/usuarios/
+# ══════════════════════════════════════════════════════════════════════
+
 class UsuarioListView(APIView):
-    permission_classes = [SoloAdministrador]  # requiere token JWT
+    permission_classes = [SoloAdministrador]
 
+    @manejar_excepciones_dominio
     def get(self, request):
-       #Devuelve solo usuarios activos ordenados por nombre"""
-        usuarios = Usuario.objects.filter(activo=True).order_by('nombre')
+        usuarios = UsuarioService.listar_activos()
         serializer = UsuarioSerializer(
-            usuarios,
-            many=True,
-            context={'request': request}  # necesario para URL completa de foto
+            usuarios, many=True, context={'request': request}
         )
         return Response(serializer.data)
 
+    @manejar_excepciones_dominio
     def post(self, request):
-        """Crea un nuevo usuario"""
-        serializer = UsuarioSerializer(
-            data=request.data,
-            context={'request': request}
-        )
+        serializer = UsuarioSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # → al service
+        usuario = UsuarioService.crear(serializer.validated_data)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        respuesta = UsuarioSerializer(usuario, context={'request': request})
+        return Response(respuesta.data, status=status.HTTP_201_CREATED)
 
 
-# ────────────────────────────────────────────
-# VER, EDITAR Y ELIMINAR USUARIO POR ID
-# GET    /api/usuarios/1/  → ver usuario
-# PUT    /api/usuarios/1/  → editar usuario
-# DELETE /api/usuarios/1/  → eliminar usuario
-# ────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+# VER, EDITAR Y DESACTIVAR USUARIO POR ID
+# GET    /api/usuarios/{id}/
+# PUT    /api/usuarios/{id}/
+# DELETE /api/usuarios/{id}/   (soft delete)
+# ══════════════════════════════════════════════════════════════════════
+
 class UsuarioDetailView(APIView):
-    permission_classes = [SoloAdministrador] 
+    permission_classes = [SoloAdministrador]
 
-    def get_object(self, pk):
-        """Busca usuario por ID, devuelve None si no existe"""
-        try:
-            return Usuario.objects.get(pk=pk)
-        except Usuario.DoesNotExist:
-            return None
-
+    @manejar_excepciones_dominio
     def get(self, request, pk):
-        """Devuelve un usuario por su ID"""
-        usuario = self.get_object(pk)
-        if not usuario:
-            return Response(
-                {'error': 'Usuario no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        serializer = UsuarioSerializer(
-            usuario,
-            context={'request': request}
-        )
+        usuario = UsuarioService.obtener_por_id(pk)
+        serializer = UsuarioSerializer(usuario, context={'request': request})
         return Response(serializer.data)
 
+    @manejar_excepciones_dominio
     def put(self, request, pk):
-        """Edita un usuario, solo los campos enviados"""
-        usuario = self.get_object(pk)
-        if not usuario:
-            return Response(
-                {'error': 'Usuario no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        # Obtener el usuario antes de validar (para validación contextual del serializer)
+        usuario_existente = UsuarioService.obtener_por_id(pk)
 
         serializer = UsuarioSerializer(
-            usuario,
+            usuario_existente,
             data=request.data,
-            partial=True,              # permite editar solo algunos campos
-            context={'request': request}
+            partial=True,
+            context={'request': request},
         )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+        # → al service
+        usuario = UsuarioService.actualizar(pk, serializer.validated_data)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        respuesta = UsuarioSerializer(usuario, context={'request': request})
+        return Response(respuesta.data)
 
+    @manejar_excepciones_dominio
     def delete(self, request, pk):
-        #Desactiva un usuario (soft delete) con validaciones de seguridad"""
-        usuario = self.get_object(pk)
-        if not usuario:
-            return Response(
-                {'error': 'Usuario no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        # 🚫 PROTECCIÓN 1: No puedes desactivarte a ti mismo
-        if usuario.id == request.user.id:
-            return Response(
-                {'error': 'No puedes desactivar tu propia cuenta'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 🚫 PROTECCIÓN 2: Debe quedar al menos 1 admin activo
-        if usuario.rol == 'Administrador':
-            # Contar admins activos (excluyendo el que se va a desactivar)
-            admins_activos = Usuario.objects.filter(
-                rol='Administrador',
-                activo=True
-            ).exclude(id=usuario.id).count()
-            
-            if admins_activos == 0:
-                return Response(
-                    {'error': 'No puedes desactivar al último administrador del sistema'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        # ✅ Soft delete: solo desactivar, no eliminar
-        usuario.activo = False
-        usuario.save(update_fields=['activo'])
-        
+        usuario = UsuarioService.desactivar(
+            usuario_id=pk,
+            solicitante=request.user,
+        )
         return Response(
             {'mensaje': f'Usuario {usuario.nombre} desactivado correctamente'},
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
-    
-    # ── Ping: solo para mantener Supabase despierto ──
+
+
+# ══════════════════════════════════════════════════════════════════════
+# PING — keep-alive de Supabase
+# ══════════════════════════════════════════════════════════════════════
+
 class PingView(APIView):
     permission_classes = [AllowAny]
 

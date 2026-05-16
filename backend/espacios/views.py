@@ -1,242 +1,204 @@
+"""
+════════════════════════════════════════════════════════════════════════
+VIEWS: ESPACIOS - VORTEX
+════════════════════════════════════════════════════════════════════════
+
+Controladores DELGADOS para los 4 dominios de la app:
+    1. Secciones (CRUD)
+    2. Espacios (CRUD + cambiar estado + mapa)
+    3. Registros (entrada / salida / búsqueda activa / historial)
+
+Cada view:
+    - Recibe el HTTP request.
+    - Valida formato con un serializer.
+    - Llama al service correspondiente.
+    - Serializa la respuesta y devuelve el código HTTP correcto.
+
+NO contienen lógica de negocio — esa vive en services/.
+"""
+
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .models import Seccion, Espacio, Registro
 
-from .models import Seccion, Espacio
 from .serializers import (
-    SeccionSerializer, 
-    EspacioSerializer, 
+    SeccionSerializer,
+    EspacioSerializer,
     CambiarEstadoSerializer,
     RegistroSerializer,
     RegistrarEntradaSerializer,
-    RegistrarSalidaSerializer
+    RegistrarSalidaSerializer,
+    TarifaSerializer
 )
+
+from .services.seccion_service import SeccionService
+from .services.espacio_service import EspacioService
+from .services.registro_service import RegistroService
+from .services.tarifa_service import TarifaService
+
 from usuarios.permissions import SoloAdministrador
+from core.http import manejar_excepciones_dominio
 
-# SECCIONES: LISTAR Y CREAR
 
+# ══════════════════════════════════════════════════════════════════════
+# SECCIONES
+# ══════════════════════════════════════════════════════════════════════
 
 class SeccionListView(APIView):
     """
-    GET  /api/secciones/  → Lista todas las secciones
-    POST /api/secciones/  → Crea una nueva sección
+    GET  /api/secciones/  → listar
+    POST /api/secciones/  → crear
     """
     permission_classes = [SoloAdministrador]
-    
+
+    @manejar_excepciones_dominio
     def get(self, request):
-        """Lista todas las secciones activas con sus estadísticas"""
-        secciones = Seccion.objects.filter(activo=True).order_by('nombre')
+        secciones = SeccionService.listar()
         serializer = SeccionSerializer(secciones, many=True)
         return Response(serializer.data)
-    
+
+    @manejar_excepciones_dominio
     def post(self, request):
-        """Crea una nueva sección"""
         serializer = SeccionSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        seccion = SeccionService.crear(serializer.validated_data)
 
+        respuesta = SeccionSerializer(seccion)
+        return Response(respuesta.data, status=status.HTTP_201_CREATED)
 
-# SECCIONES: VER, EDITAR Y ELIMINAR
 
 class SeccionDetailView(APIView):
     """
-    GET    /api/secciones/{id}/  → Ver una sección
-    PUT    /api/secciones/{id}/  → Editar sección
-    DELETE /api/secciones/{id}/  → Eliminar sección
+    GET    /api/secciones/{id}/  → ver
+    PUT    /api/secciones/{id}/  → editar
+    DELETE /api/secciones/{id}/  → eliminar
     """
     permission_classes = [SoloAdministrador]
-    
-    def get_object(self, pk):
-        """Busca sección por ID"""
-        try:
-            return Seccion.objects.get(pk=pk)
-        except Seccion.DoesNotExist:
-            return None
-    
+
+    @manejar_excepciones_dominio
     def get(self, request, pk):
-        """Obtiene una sección específica"""
-        seccion = self.get_object(pk)
-        if not seccion:
-            return Response(
-                {'error': 'Sección no encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        serializer = SeccionSerializer(seccion)
-        return Response(serializer.data)
-    
+        seccion = SeccionService.obtener_por_id(pk)
+        return Response(SeccionSerializer(seccion).data)
+
+    @manejar_excepciones_dominio
     def put(self, request, pk):
-        """Edita una sección"""
-        seccion = self.get_object(pk)
-        if not seccion:
-            return Response(
-                {'error': 'Sección no encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        serializer = SeccionSerializer(seccion, data=request.data, partial=True)
-        
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+        # Obtener antes de validar (para validación contextual del serializer)
+        seccion_existente = SeccionService.obtener_por_id(pk)
+
+        serializer = SeccionSerializer(seccion_existente, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        seccion = SeccionService.actualizar(pk, serializer.validated_data)
+
+        return Response(SeccionSerializer(seccion).data)
+
+    @manejar_excepciones_dominio
     def delete(self, request, pk):
-        """Elimina una sección (solo si no tiene espacios)"""
-        seccion = self.get_object(pk)
-        if not seccion:
-            return Response(
-                {'error': 'Sección no encontrada'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Verificar si tiene espacios
-        if seccion.espacios.exists():
-            return Response(
-                {'error': 'No se puede eliminar una sección con espacios asignados'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        seccion.delete()
+        seccion = SeccionService.eliminar(pk)
         return Response(
-            {'mensaje': 'Sección eliminada correctamente'},
-            status=status.HTTP_204_NO_CONTENT
+            {'mensaje': f'Sección {seccion.nombre} desactivada correctamente'},
+            status=status.HTTP_200_OK,
         )
 
+class ReactivarSeccionView(APIView):
+    """
+    POST /api/secciones/{id}/reactivar/
+    Reactiva una sección que estaba soft-deleted (activo=False).
+    """
+    permission_classes = [SoloAdministrador]
 
-
-# ESPACIOS: LISTAR Y CREAR
-
+    @manejar_excepciones_dominio
+    def post(self, request, pk):
+        seccion = SeccionService.reactivar(pk)
+        return Response({
+            'mensaje': f'Sección {seccion.nombre} reactivada correctamente',
+            'seccion': SeccionSerializer(seccion).data,
+        }, status=status.HTTP_200_OK)
+# ══════════════════════════════════════════════════════════════════════
+# ESPACIOS
+# ══════════════════════════════════════════════════════════════════════
 
 class EspacioListView(APIView):
     """
-    GET  /api/espacios/  → Lista todos los espacios
-    POST /api/espacios/  → Crea un nuevo espacio
+    GET  /api/espacios/?seccion=1  → listar (filtro opcional)
+    POST /api/espacios/            → crear (solo admin)
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @manejar_excepciones_dominio
     def get(self, request):
-        """
-        Lista todos los espacios
-        Puede filtrar por sección: ?seccion=1
-        """
-        espacios = Espacio.objects.select_related('seccion').all()
-        
-        # Filtro opcional por sección
-        seccion_id = request.query_params.get('seccion', None)
-        if seccion_id:
-            espacios = espacios.filter(seccion_id=seccion_id)
-        
-        # Ordenar por sección y número
-        espacios = espacios.order_by('seccion__nombre', 'numero')
-        
+        seccion_id = request.query_params.get('seccion')
+        espacios = EspacioService.listar(seccion_id=seccion_id)
         serializer = EspacioSerializer(espacios, many=True)
         return Response(serializer.data)
-    
+
+    @manejar_excepciones_dominio
     def post(self, request):
-        """Crea un nuevo espacio (solo admin)"""
-        # Verificar que sea admin
+        # Solo admin puede crear espacios
         if request.user.rol != 'Administrador':
             return Response(
                 {'error': 'Solo administradores pueden crear espacios'},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
-        
+
         serializer = EspacioSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        espacio = EspacioService.crear(serializer.validated_data)
 
-
-# ESPACIOS: VER, EDITAR Y ELIMINAR
+        respuesta = EspacioSerializer(espacio)
+        return Response(respuesta.data, status=status.HTTP_201_CREATED)
 
 
 class EspacioDetailView(APIView):
     """
-    GET    /api/espacios/{id}/  → Ver un espacio
-    PUT    /api/espacios/{id}/  → Editar espacio
-    DELETE /api/espacios/{id}/  → Eliminar espacio
+    GET    /api/espacios/{id}/  → ver
+    PUT    /api/espacios/{id}/  → editar (solo admin)
+    DELETE /api/espacios/{id}/  → eliminar (solo admin)
     """
     permission_classes = [IsAuthenticated]
-    
-    def get_object(self, pk):
-        """Busca espacio por ID"""
-        try:
-            return Espacio.objects.select_related('seccion').get(pk=pk)
-        except Espacio.DoesNotExist:
-            return None
-    
+
+    @manejar_excepciones_dominio
     def get(self, request, pk):
-        """Obtiene un espacio específico"""
-        espacio = self.get_object(pk)
-        if not espacio:
-            return Response(
-                {'error': 'Espacio no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        serializer = EspacioSerializer(espacio)
-        return Response(serializer.data)
-    
+        espacio = EspacioService.obtener_por_id(pk)
+        return Response(EspacioSerializer(espacio).data)
+
+    @manejar_excepciones_dominio
     def put(self, request, pk):
-        """Edita un espacio (solo admin)"""
         if request.user.rol != 'Administrador':
             return Response(
                 {'error': 'Solo administradores pueden editar espacios'},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
-        
-        espacio = self.get_object(pk)
-        if not espacio:
-            return Response(
-                {'error': 'Espacio no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        serializer = EspacioSerializer(espacio, data=request.data, partial=True)
-        
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
+        espacio_existente = EspacioService.obtener_por_id(pk)
+
+        serializer = EspacioSerializer(espacio_existente, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        espacio = EspacioService.actualizar(pk, serializer.validated_data)
+
+        return Response(EspacioSerializer(espacio).data)
+
+    @manejar_excepciones_dominio
     def delete(self, request, pk):
-        """Elimina un espacio (solo admin)"""
         if request.user.rol != 'Administrador':
             return Response(
                 {'error': 'Solo administradores pueden eliminar espacios'},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
-        
-        espacio = self.get_object(pk)
-        if not espacio:
-            return Response(
-                {'error': 'Espacio no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        espacio.delete()
+
+        espacio = EspacioService.eliminar(pk)
         return Response(
-            {'mensaje': 'Espacio eliminado correctamente'},
-            status=status.HTTP_204_NO_CONTENT
+            {'mensaje': f'Espacio {espacio.numero} desactivado correctamente'},
+            status=status.HTTP_200_OK,
         )
-
-
-
-# CAMBIAR ESTADO DE ESPACIO
 
 
 class CambiarEstadoView(APIView):
@@ -244,32 +206,20 @@ class CambiarEstadoView(APIView):
     POST /api/espacios/{id}/cambiar-estado/
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @manejar_excepciones_dominio
     def post(self, request, pk):
-        """Cambia el estado de un espacio - OPTIMIZADO"""
-        try:
-            espacio = Espacio.objects.select_related('seccion').get(pk=pk)
-        except Espacio.DoesNotExist:
-            return Response(
-                {'error': 'Espacio no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
         serializer = CambiarEstadoSerializer(data=request.data)
-        
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Cambiar estado
-        nuevo_estado = serializer.validated_data['estado']
-        notas = serializer.validated_data.get('notas', '')
-        
-        espacio.estado = nuevo_estado
-        if notas:
-            espacio.notas = notas
-        espacio.save(update_fields=['estado', 'notas'])
-        
-        # Retornar solo los datos necesarios (más rápido)
+
+        espacio = EspacioService.cambiar_estado(
+            espacio_id=pk,
+            nuevo_estado=serializer.validated_data['estado'],
+            notas=serializer.validated_data.get('notas', ''),
+        )
+
+        # Respuesta liviana (solo lo necesario)
         return Response({
             'id': espacio.id,
             'numero': espacio.numero,
@@ -278,326 +228,148 @@ class CambiarEstadoView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-# MAPA DEL PARQUEO (Vista consolidada)
-
-
 class MapaParqueoView(APIView):
     """
-    GET /api/mapa/
-    
-    Devuelve todas las secciones con sus espacios para mostrar el mapa
+    GET /api/mapa/  → mapa consolidado del parqueo
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @manejar_excepciones_dominio
     def get(self, request):
-        """Obtiene el mapa completo del parqueo - OPTIMIZADO"""
-        # Prefetch para evitar N+1 queries
-        secciones = Seccion.objects.filter(activo=True).prefetch_related(
-            'espacios'
-        ).order_by('nombre')
-        
-        data = []
-        for seccion in secciones:
-            # Calcular estadísticas sin queries adicionales
-            espacios_seccion = [e for e in seccion.espacios.all() if e.activo]
-            
-            seccion_data = {
-                'id': seccion.id,
-                'nombre': seccion.nombre,
-                'tipo': seccion.tipo,
-                'descripcion': seccion.descripcion,
-                'activo': seccion.activo,
-                'total_espacios': len(espacios_seccion),
-                'espacios_libres': sum(1 for e in espacios_seccion if e.estado == 'LIBRE'),
-                'espacios_ocupados': sum(1 for e in espacios_seccion if e.estado == 'OCUPADO'),
-                'creado_en': seccion.creado_en,
-                'actualizado_en': seccion.actualizado_en,
-                'espacios': [
-                    {
-                        'id': e.id,
-                        'numero': e.numero,
-                        'seccion': e.seccion_id,
-                        'seccion_nombre': seccion.nombre,
-                        'seccion_tipo': seccion.tipo,
-                        'estado': e.estado,
-                        'posicion_fila': e.posicion_fila,
-                        'posicion_columna': e.posicion_columna,
-                        'activo': e.activo,
-                        'notas': e.notas,
-                        'esta_libre': e.estado == 'LIBRE' and e.activo,
-                        'esta_ocupado': e.estado == 'OCUPADO',
-                        'creado_en': e.creado_en,
-                        'actualizado_en': e.actualizado_en,
-                    }
-                    for e in espacios_seccion
-                ]
-            }
-            data.append(seccion_data)
-        
-        return Response(data)
+        mapa = EspacioService.obtener_mapa()
+        return Response(mapa)
     
-    # ══════════════════════════════════════════════════════════════════════════
-# REGISTRAR ENTRADA
-# ══════════════════════════════════════════════════════════════════════════
+class ReactivarEspacioView(APIView):
+    """
+    POST /api/espacios/{id}/reactivar/
+    Reactiva un espacio que estaba soft-deleted (activo=False).
+    """
+    permission_classes = [IsAuthenticated]
+
+    @manejar_excepciones_dominio
+    def post(self, request, pk):
+        if request.user.rol != 'Administrador':
+            return Response(
+                {'error': 'Solo administradores pueden reactivar espacios'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        espacio = EspacioService.reactivar(pk)
+        return Response({
+            'mensaje': f'Espacio {espacio.numero} reactivado correctamente',
+            'espacio': EspacioSerializer(espacio).data,
+        }, status=status.HTTP_200_OK)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REGISTROS (ENTRADA / SALIDA / BÚSQUEDA / HISTORIAL)
+# ══════════════════════════════════════════════════════════════════════
 
 class RegistrarEntradaView(APIView):
     """
     POST /api/registros/entrada/
-    
-    Registra la entrada de un vehículo al parqueo
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @manejar_excepciones_dominio
     def post(self, request):
-        """Registra entrada de vehículo"""
-        from .utils import determinar_horario_entrada
-        from django.utils import timezone
-        
         serializer = RegistrarEntradaSerializer(data=request.data)
-        
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Obtener datos validados
-        placa = serializer.validated_data['placa']
-        tipo_vehiculo = serializer.validated_data['tipo_vehiculo']
-        espacio_id = serializer.validated_data['espacio']
-        notas = serializer.validated_data.get('notas', '')
-        
-        try:
-            # Obtener el espacio
-            espacio = Espacio.objects.get(pk=espacio_id)
-            
-            # Determinar horario de entrada
-            fecha_entrada = timezone.now()
-            horario = determinar_horario_entrada(fecha_entrada)
-            
-            # Crear el registro
-            registro = Registro.objects.create(
-                espacio=espacio,
-                placa=placa,
-                tipo_vehiculo=tipo_vehiculo,
-                horario_entrada=horario,
-                estado='EN_CURSO',
-                notas=notas
-            )
-            
-            # Marcar el espacio como OCUPADO
-            espacio.marcar_ocupado()
-            
-            # Serializar respuesta
-            response_serializer = RegistroSerializer(registro)
-            
-            return Response(
-                response_serializer.data,
-                status=status.HTTP_201_CREATED
-            )
-            
-        except Espacio.DoesNotExist:
-            return Response(
-                {'error': 'Espacio no encontrado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
+        registro = RegistroService.registrar_entrada(serializer.validated_data)
 
-# ══════════════════════════════════════════════════════════════════════════
-# REGISTRAR SALIDA
-# ══════════════════════════════════════════════════════════════════════════
+        return Response(
+            RegistroSerializer(registro).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class RegistrarSalidaView(APIView):
     """
     POST /api/registros/salida/
-    
-    Registra la salida de un vehículo
-    Calcula tiempo y tarifa automáticamente
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @manejar_excepciones_dominio
     def post(self, request):
-        """Registra salida de vehículo"""
-        from .utils import calcular_tarifa
-        from django.utils import timezone
-        
         serializer = RegistrarSalidaSerializer(data=request.data)
-        
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        placa = serializer.validated_data.get('placa')
-        registro_id = serializer.validated_data.get('registro_id')
-        notas_salida = serializer.validated_data.get('notas', '')
-        
-        try:
-            # Buscar el registro activo
-            if registro_id:
-                registro = Registro.objects.get(pk=registro_id, estado='EN_CURSO')
-            elif placa:
-                registro = Registro.objects.get(
-                    placa__iexact=placa,
-                    estado='EN_CURSO'
-                )
-            else:
-                return Response(
-                    {'error': 'Debe proporcionar placa o registro_id'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Registrar fecha de salida
-            fecha_salida = timezone.now()
-            
-            # Calcular tarifa y tiempo
-            tarifa, tiempo_minutos = calcular_tarifa(
-                registro.fecha_entrada,
-                fecha_salida
-            )
-            
-            # Actualizar el registro
-            registro.fecha_salida = fecha_salida
-            registro.tarifa = tarifa
-            registro.tiempo_minutos = tiempo_minutos
-            registro.estado = 'FINALIZADO'
-            
-            if notas_salida:
-                registro.notas = f"{registro.notas}\nSalida: {notas_salida}"
-            
-            registro.save(update_fields=[
-                'fecha_salida', 
-                'tarifa', 
-                'tiempo_minutos', 
-                'estado', 
-                'notas',
-                'actualizado_en'
-            ])
-            
-            # Marcar el espacio como LIBRE
-            registro.espacio.marcar_libre()
-            
-            # Serializar respuesta
-            response_serializer = RegistroSerializer(registro)
-            
-            return Response(
-                response_serializer.data,
-                status=status.HTTP_200_OK
-            )
-            
-        except Registro.DoesNotExist:
-            return Response(
-                {'error': 'No se encontró un registro activo con esos datos'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
+        registro = RegistroService.registrar_salida(serializer.validated_data)
 
-# ══════════════════════════════════════════════════════════════════════════
-# BUSCAR REGISTRO ACTIVO
-# ══════════════════════════════════════════════════════════════════════════
+        return Response(
+            RegistroSerializer(registro).data,
+            status=status.HTTP_200_OK,
+        )
+
 
 class BuscarRegistroActivoView(APIView):
     """
     GET /api/registros/buscar/?placa=ABC123
     GET /api/registros/buscar/?espacio=5
-    
-    Busca un registro activo por placa o espacio
-    Muestra info sin registrar salida (para preview)
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @manejar_excepciones_dominio
     def get(self, request):
-        """Busca registro activo"""
-        from .utils import calcular_tarifa_actual
-        
-        placa = request.query_params.get('placa')
-        espacio_id = request.query_params.get('espacio')
-        
-        if not placa and not espacio_id:
-            return Response(
-                {'error': 'Debe proporcionar placa o espacio'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            # Buscar registro activo
-            if placa:
-                registro = Registro.objects.select_related('espacio', 'espacio__seccion').get(
-                    placa__iexact=placa,
-                    estado='EN_CURSO'
-                )
-            else:
-                registro = Registro.objects.select_related('espacio', 'espacio__seccion').get(
-                    espacio_id=espacio_id,
-                    estado='EN_CURSO'
-                )
-            
-            # Calcular tarifa estimada actual
-            tarifa_estimada, tiempo_minutos = calcular_tarifa_actual(registro.fecha_entrada)
-            
-            # Serializar con tarifa estimada
-            data = RegistroSerializer(registro).data
-            data['tarifa_estimada'] = str(tarifa_estimada)
-            data['tiempo_minutos_actual'] = tiempo_minutos
-            
-            return Response(data, status=status.HTTP_200_OK)
-            
-        except Registro.DoesNotExist:
-            return Response(
-                {'error': 'No se encontró un registro activo'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        resultado = RegistroService.buscar_activo_con_tarifa(
+            placa=request.query_params.get('placa'),
+            espacio_id=request.query_params.get('espacio'),
+        )
 
+        # Serializamos el registro y le agregamos los campos extra calculados
+        data = RegistroSerializer(resultado['registro']).data
+        data['tarifa_estimada'] = str(resultado['tarifa_estimada'])
+        data['tiempo_minutos_actual'] = resultado['tiempo_minutos_actual']
 
-# ══════════════════════════════════════════════════════════════════════════
-# HISTORIAL DE REGISTROS
-# ══════════════════════════════════════════════════════════════════════════
+        return Response(data, status=status.HTTP_200_OK)
+
 
 class HistorialRegistrosView(APIView):
     """
-    GET /api/registros/historial/
-    
-    Lista todos los registros con filtros opcionales
-    Filtros: ?estado=FINALIZADO&fecha_desde=2024-01-01
+    GET /api/registros/historial/?estado=FINALIZADO&fecha_desde=2024-01-01
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @manejar_excepciones_dominio
     def get(self, request):
-        """Lista registros con filtros"""
-        registros = Registro.objects.select_related(
-            'espacio',
-            'espacio__seccion'
-        ).all()
-        
-        # Filtro por estado
-        estado = request.query_params.get('estado')
-        if estado:
-            registros = registros.filter(estado=estado)
-        
-        # Filtro por fecha desde
-        fecha_desde = request.query_params.get('fecha_desde')
-        if fecha_desde:
-            registros = registros.filter(fecha_entrada__gte=fecha_desde)
-        
-        # Filtro por fecha hasta
-        fecha_hasta = request.query_params.get('fecha_hasta')
-        if fecha_hasta:
-            registros = registros.filter(fecha_entrada__lte=fecha_hasta)
-        
-        # Filtro por placa
-        placa = request.query_params.get('placa')
-        if placa:
-            registros = registros.filter(placa__icontains=placa)
-        
-        # Ordenar por más reciente
-        registros = registros.order_by('-fecha_entrada')
-        
-        # Serializar
+        # Recolectar filtros del query string
+        filtros = {
+            'estado':       request.query_params.get('estado'),
+            'fecha_desde':  request.query_params.get('fecha_desde'),
+            'fecha_hasta':  request.query_params.get('fecha_hasta'),
+            'placa':        request.query_params.get('placa'),
+        }
+
+        registros = RegistroService.listar_historial(filtros)
         serializer = RegistroSerializer(registros, many=True)
-        
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+# ══════════════════════════════════════════════════════════════════════
+# TARIFAS
+# ══════════════════════════════════════════════════════════════════════
+
+class TarifaView(APIView):
+    """
+    GET  /api/tarifas/  → ver la configuración actual (cualquier autenticado)
+    PUT  /api/tarifas/  → actualizar (solo Administrador)
+    """
+
+    def get_permissions(self):
+        # Leer: cualquier autenticado. Editar: solo admin.
+        if self.request.method == 'GET':
+            return [IsAuthenticated()]
+        return [SoloAdministrador()]
+
+    @manejar_excepciones_dominio
+    def get(self, request):
+        tarifa = TarifaService.obtener()
+        return Response(TarifaSerializer(tarifa).data)
+
+    @manejar_excepciones_dominio
+    def put(self, request):
+        # El service valida las reglas de negocio (valores > 0, horas, etc.)
+        tarifa = TarifaService.actualizar(request.data)
+        return Response(TarifaSerializer(tarifa).data)

@@ -115,20 +115,13 @@
       </section>
     </div>
     
-    <!-- Modal de CREAR Espacio -->
-    <CrearEspacioForm
-    v-if="modalEspacioAbierto"
-    :seccionPreseleccionada="seccion?.id"
-    @cerrar="cerrarModalEspacio"
-    @guardado="handleGuardadoEspacio"
-    />
-
-    <!-- Modal de EDITAR Espacio -->
-    <EditarEspacioForm
-    v-if="modalEditarAbierto"
-    :espacio="espacioEditar"
-    @cerrar="cerrarModalEditar"
-    @guardado="handleGuardadoEdicion"
+    <!-- Modal único: crear o editar (decide por la prop espacioEditar) -->
+    <EspacioForm
+      v-if="modalAbierto"
+      :espacioEditar="espacioEditar"
+      :seccionPreseleccionada="seccion?.id"
+      @cerrar="cerrarModal"
+      @guardado="handleGuardadoEspacio"
     />
   </div>
 </template>
@@ -138,12 +131,11 @@ import '@/assets/css/usuarios.css'
 import '@/assets/css/mapa.css'
 import '@/assets/css/espacios.css'
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router' 
+import { useRoute, useRouter } from 'vue-router'
 import SidebarNav from '@/components/SidebarNav.vue'
-
-import CrearEspacioForm from '@/components/forms/CrearEspacioForm.vue'
-import EditarEspacioForm from '@/components/forms/EditarEspacioForm.vue'
-import { getSeccion, getEspacios, eliminarEspacio as eliminarEspacioAPI } from '@/api/espacios'
+import EspacioForm from '@/components/forms/EspacioForm.vue'
+import { getSeccion } from '@/api/espacios'
+import { useEspacios } from '@/composables/useEspacios'
 import { useModal } from '@/composables/useModal'
 
 
@@ -152,7 +144,13 @@ const router = useRouter()
 const sidebarAbierto = ref(false)
 const cargando = ref(true)
 const seccion = ref(null)
-const espacios = ref([])
+
+// Composable que maneja toda la lógica de espacios (incluye eliminar con soft delete)
+const {
+  espacios,
+  cargarEspacios,
+  eliminar: eliminarEspacioComposable,
+} = useEspacios()
 
 // Computed 
 const espaciosFiltrados = computed(() => {
@@ -165,18 +163,12 @@ const espaciosFiltrados = computed(() => {
   })
 })
 // ── Modal de espacio ── ← AGREGAR TODO ESTO
+// ── Modal único: sirve para crear y editar ──
 const {
-  modalAbierto: modalEspacioAbierto,
-  datosModal: espacioSeleccionado,
-  abrirModal: abrirModalEspacioBase,
-  cerrarModal: cerrarModalEspacio,
-} = useModal()
-
-const {
-  modalAbierto: modalEditarAbierto,
-  datosModal: espacioEditar,
-  abrirModal: abrirModalEditar,
-  cerrarModal: cerrarModalEditar,
+  modalAbierto,
+  datosModal: espacioEditar,  // si es null → modo crear; si tiene datos → modo editar
+  abrirModal,
+  cerrarModal,
 } = useModal()
 
 const espaciosFueraServicio = computed(() => {
@@ -188,18 +180,16 @@ async function cargarDatos() {
   try {
     cargando.value = true
     const seccionId = route.params.id
-    
-    // Cargar sección
-    const respuestaSeccion = await getSeccion(seccionId)
+
+    // Cargar la sección (datos individuales) y sus espacios en paralelo
+    const [respuestaSeccion] = await Promise.all([
+      getSeccion(seccionId),
+      cargarEspacios(seccionId),  // composable se encarga de espacios
+    ])
+
     seccion.value = respuestaSeccion.data
-    
-    // Cargar espacios de esa sección
-    const respuestaEspacios = await getEspacios(seccionId)
-    espacios.value = respuestaEspacios.data
-    
   } catch (error) {
-    console.error('Error:', error)
-    alert('Error al cargar datos')
+    console.error('Error al cargar datos de la sección:', error)
   } finally {
     cargando.value = false
   }
@@ -215,40 +205,26 @@ function formatearEstado(estado) {
 }
 
 function abrirModalCrear() {
-  // Abrir modal SIN espacio (modo crear) pero con sección preseleccionada
-  abrirModalEspacioBase(null)
+  // Abrir modal sin datos = modo crear
+  abrirModal(null)
 }
 
 function editarEspacio(espacio) {
-  // Abrir modal de EDITAR
-  abrirModalEditar(espacio)
+  // Abrir modal con datos = modo editar
+  abrirModal(espacio)
 }
 
 async function eliminarEspacio(id) {
-  const confirmado = confirm('¿Estás seguro de eliminar este espacio?')
-  
-  if (!confirmado) return
-  
-  try {
-    await eliminarEspacioAPI(id)
-    alert('✅ Espacio eliminado correctamente')
-    
-    // Recargar datos
-    await cargarDatos()
-  } catch (error) {
-    console.error('Error:', error)
-    alert('❌ Error al eliminar espacio')
+  // El composable maneja confirmación, llamada al API y notificaciones
+  const exito = await eliminarEspacioComposable(id)
+  if (exito) {
+    await cargarDatos()  // refrescar
   }
 }
 
 async function handleGuardadoEspacio() {
   await cargarDatos()
-  cerrarModalEspacio()
-}
-
-async function handleGuardadoEdicion() {  // ← AGREGAR
-  await cargarDatos()
-  cerrarModalEditar()
+  cerrarModal()
 }
 
 onMounted(() => {

@@ -36,16 +36,18 @@ export const API_ENDPOINTS = {
     DETAIL: (id) => `/secciones/${id}/`,
     UPDATE: (id) => `/secciones/${id}/`,
     DELETE: (id) => `/secciones/${id}/`,
+    REACTIVAR: (id) => `/secciones/${id}/reactivar/`,
   },
 
   // ── Espacios ──
-  ESPACIOS: {
-    LIST: '/espacios/',
-    CREATE: '/espacios/',
-    DETAIL: (id) => `/espacios/${id}/`,
-    UPDATE: (id) => `/espacios/${id}/`,
-    DELETE: (id) => `/espacios/${id}/`,
-    CAMBIAR_ESTADO: (id) => `/espacios/${id}/cambiar-estado/`,
+ ESPACIOS: {
+  LIST: '/espacios/',
+  CREATE: '/espacios/',
+  DETAIL: (id) => `/espacios/${id}/`,
+  UPDATE: (id) => `/espacios/${id}/`,
+  DELETE: (id) => `/espacios/${id}/`,
+  CAMBIAR_ESTADO: (id) => `/espacios/${id}/cambiar-estado/`,
+  REACTIVAR: (id) => `/espacios/${id}/reactivar/`,
   },
 
   // ── Mapa ──
@@ -61,4 +63,8 @@ export const API_ENDPOINTS = {
     HISTORIAL: '/registros/historial/',
   },
 
+  TARIFAS: {
+  GET: '/tarifas/',
+  UPDATE: '/tarifas/',
+  },
 }

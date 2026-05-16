@@ -20,15 +20,21 @@
         <div class="tabs">
           <button 
             :class="['tab', { activo: tabActiva === 'secciones' }]"
-            @click="tabActiva = 'secciones'"
+            @click="cambiarTab('secciones')"
           >
             📂 Secciones
           </button>
           <button 
             :class="['tab', { activo: tabActiva === 'espacios' }]"
-            @click="tabActiva = 'espacios'"
+            @click="cambiarTab('espacios')"
           >
             🅿️ Espacios
+          </button>
+          <button 
+            :class="['tab', { activo: tabActiva === 'tarifas' }]"
+            @click="seleccionarTabTarifas"
+          >
+            💲 Tarifas
           </button>
         </div>
 
@@ -244,8 +250,92 @@
           <button class="btn-flotante" @click="abrirModalEspacio()" title="Crear espacio">
             +
           </button>
+          </div>
 
-        </div>
+        <!-- TAB: TARIFAS -->
+          <div v-if="tabActiva === 'tarifas'">
+
+            <div class="loading-wrapper" v-if="cargandoTarifas">
+              <p>Cargando tarifas...</p>
+            </div>
+
+            <div class="error-wrapper" v-else-if="errorTarifas">
+              <p>⚠️ {{ errorTarifas }}</p>
+              <button class="btn-reintentar" @click="cargarTarifas">Reintentar</button>
+            </div>
+
+            <div v-else class="tarifas-panel">
+
+              <div class="tarifas-info">
+                <p>
+                  ℹ️ Estas tarifas aplican solo a <strong>vehículos con cobro automático</strong>
+                  (autos) en secciones <strong>rotativas</strong>. Las motos se cobran
+                  manualmente al registrar la salida.
+                </p>
+              </div>
+
+              <!-- Tarifas Diurnas -->
+              <div class="tarifa-grupo">
+                <h3>☀️ Horario Diurno</h3>
+                <div class="tarifa-campos">
+                  <div class="campo">
+                    <label>Primera hora (Bs.)</label>
+                    <input type="number" step="0.01" min="0.01"
+                      v-model="formTarifas.primera_hora_diurno" />
+                  </div>
+                  <div class="campo">
+                    <label>Hora adicional (Bs.)</label>
+                    <input type="number" step="0.01" min="0.01"
+                      v-model="formTarifas.hora_adicional_diurno" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tarifas Nocturnas -->
+              <div class="tarifa-grupo">
+                <h3>🌙 Horario Nocturno</h3>
+                <div class="tarifa-campos">
+                  <div class="campo">
+                    <label>Primera hora (Bs.)</label>
+                    <input type="number" step="0.01" min="0.01"
+                      v-model="formTarifas.primera_hora_nocturno" />
+                  </div>
+                  <div class="campo">
+                    <label>Hora adicional (Bs.)</label>
+                    <input type="number" step="0.01" min="0.01"
+                      v-model="formTarifas.hora_adicional_nocturno" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Franjas Horarias -->
+              <div class="tarifa-grupo">
+                <h3>🕐 Franjas Horarias</h3>
+                <div class="tarifa-campos">
+                  <div class="campo">
+                    <label>Inicio diurno (hora 0-23)</label>
+                    <input type="number" min="0" max="23"
+                      v-model="formTarifas.hora_inicio_diurno" />
+                  </div>
+                  <div class="campo">
+                    <label>Fin diurno (hora 0-23)</label>
+                    <input type="number" min="0" max="23"
+                      v-model="formTarifas.hora_fin_diurno" />
+                  </div>
+                </div>
+                <p class="tarifa-hint">
+                  Ej: inicio 6 y fin 18 → Diurno de 06:00 a 18:59, Nocturno de 19:00 a 05:59
+                </p>
+              </div>
+
+              <button class="btn-guardar-tarifas"
+                @click="guardarTarifas"
+                :disabled="guardandoTarifas">
+                {{ guardandoTarifas ? 'Guardando...' : ' Guardar Tarifas' }}
+              </button>
+
+            </div>
+          </div>
 
       </section>
     </div>
@@ -286,12 +376,14 @@ import EspacioForm from '@/components/forms/EspacioForm.vue'
 import { useSecciones } from '@/composables/useSecciones'
 import { useEspacios } from '@/composables/useEspacios'
 import { useModal } from '@/composables/useModal'
+import { useTarifas } from '@/composables/useTarifas'
 
 // ESTADO
 
 const sidebarAbierto = ref(false)
 const tabActiva = ref('secciones')
-const router = useRouter()  
+const router = useRouter() 
+const tarifasYaCargadas = ref(false) 
 // ── Secciones ──
 const {
   secciones,
@@ -329,6 +421,23 @@ const {
   cerrarModal: cerrarModalEspacio,
 } = useModal()
 
+// ── Tarifas ──
+const {
+  cargando: cargandoTarifas,
+  errorCarga: errorTarifas,
+  guardando: guardandoTarifas,
+  cargarTarifas: cargarTarifasApi,
+  guardarTarifas: guardarTarifasApi,
+} = useTarifas()
+
+const formTarifas = ref({
+  primera_hora_diurno: 0,
+  hora_adicional_diurno: 0,
+  primera_hora_nocturno: 0,
+  hora_adicional_nocturno: 0,
+  hora_inicio_diurno: 6,
+  hora_fin_diurno: 18,
+})
 
 // FUNCIONES - SECCIONES
 
@@ -344,9 +453,6 @@ async function handleGuardadoSeccion() {
 async function eliminarSeccion(id) {
   await eliminarSeccionComposable(id)
 }
-
-
-
 
 // FUNCIONES - ESPACIOS
 
@@ -378,8 +484,64 @@ function verEspaciosSeccion(seccionId) {
 
 
 
+// Flags para saber si ya cargamos cada pestaña
+// (evita refetch innecesario si el usuario cambia de pestaña varias veces)
+const seccionesCargadas = ref(false)
+const espaciosCargados = ref(false)
+
+/**
+ * Cambia de pestaña y carga datos solo si nunca se cargaron antes.
+ * Esto reduce peticiones al backend cuando el usuario solo usa una pestaña.
+ */
+async function cambiarTab(nuevaTab) {
+  tabActiva.value = nuevaTab
+
+  if (nuevaTab === 'secciones' && !seccionesCargadas.value) {
+    await cargarSecciones()
+    seccionesCargadas.value = true
+  }
+
+  if (nuevaTab === 'espacios' && !espaciosCargados.value) {
+    await cargarEspacios()
+    espaciosCargados.value = true
+  }
+}
+
+// Se llama al hacer clic en la pestaña Tarifas (lazy: solo carga 1 vez)
+async function seleccionarTabTarifas() {
+  tabActiva.value = 'tarifas'
+  if (!tarifasYaCargadas.value) {
+    await cargarTarifas()
+    tarifasYaCargadas.value = true
+  }
+}
+
+async function cargarTarifas() {
+  const datos = await cargarTarifasApi()
+  if (datos) {
+    formTarifas.value = {
+      primera_hora_diurno: datos.primera_hora_diurno,
+      hora_adicional_diurno: datos.hora_adicional_diurno,
+      primera_hora_nocturno: datos.primera_hora_nocturno,
+      hora_adicional_nocturno: datos.hora_adicional_nocturno,
+      hora_inicio_diurno: datos.hora_inicio_diurno,
+      hora_fin_diurno: datos.hora_fin_diurno,
+    }
+  }
+}
+
+async function guardarTarifas() {
+  const exito = await guardarTarifasApi(formTarifas.value)
+  if (exito) {
+    await cargarTarifas() // refrescar con lo que devolvió el backend
+  }
+}
+
 onMounted(() => {
-  cargarSecciones()
-  cargarEspacios()
+  // Solo cargar la pestaña inicial (secciones por defecto)
+  cambiarTab(tabActiva.value)
 })
+
+
+
 </script>

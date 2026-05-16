@@ -3,160 +3,196 @@
 UTILIDADES: CÁLCULO DE TARIFAS - VORTEX
 ════════════════════════════════════════════════════════════════════════
 
-Sistema de tarifas:
-- DIURNO (06:00 - 18:00): Primera hora Bs. 9, adicionales Bs. 2/hora
-- NOCTURNO (19:00 - 05:59): Bs. 5/hora
+FUNCIONES PURAS de cálculo de tarifa.
+
+"Pura" significa: reciben todos los datos como parámetros (incluida la
+configuración de tarifas) y no acceden a la base de datos ni a variables
+globales. Esto las hace testeables de forma aislada y respeta la
+separación de capas (el acceso a datos lo hace el RegistroService).
+
+Reglas de negocio:
+- Franja DIURNA  : desde hora_inicio_diurno hasta hora_fin_diurno (inclusive).
+                   Ej: 6 a 18 → diurno es 06:00:00 a 18:59:59.
+- Franja NOCTURNA: el resto (ej: 19:00:00 a 05:59:59).
+- La "primera hora" ocurre UNA sola vez; su precio depende de la franja
+  en la que el vehículo ENTRÓ.
+- Las horas siguientes son "adicionales"; cada una se cobra según la
+  franja en la que transcurre esa hora.
+- Las fracciones de hora se cobran de forma PROPORCIONAL (no se redondea
+  hacia arriba). Ej: media hora de primera hora diurna = 9 / 2 = 4.50.
 """
 
-from datetime import datetime, time, timedelta
-from decimal import Decimal
-import math
+from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
+
+# Zona horaria de Bolivia (UTC-4)
+ZONA_BOLIVIA = ZoneInfo('America/La_Paz')
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# CONSTANTES DE TARIFAS
-# ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# HELPERS DE FRANJA HORARIA
+# ══════════════════════════════════════════════════════════════════════
 
-TARIFA_DIURNA_PRIMERA = Decimal('9.00')    # Primera hora diurna
-TARIFA_DIURNA_ADICIONAL = Decimal('2.00')  # Horas adicionales diurnas
-TARIFA_NOCTURNA = Decimal('5.00')          # Por hora nocturna
-
-HORA_INICIO_DIURNO = time(6, 0)   # 06:00
-HORA_FIN_DIURNO = time(18, 0)     # 18:00
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# FUNCIONES
-# ══════════════════════════════════════════════════════════════════════════
-
-def es_horario_diurno(hora_datetime):
+def es_horario_diurno(momento, hora_inicio_diurno, hora_fin_diurno):
     """
-    Verifica si una hora está en horario diurno (06:00 - 18:00)
-    
+    Determina si un datetime cae en franja diurna.
+
+    Diurno = la hora del día está entre hora_inicio_diurno y
+    hora_fin_diurno, AMBOS inclusive.
+    Ej: inicio=6, fin=18 → diurno si la hora es 6,7,...,18
+        (es decir 06:00:00 hasta 18:59:59).
+
     Args:
-        hora_datetime: datetime object
-    
+        momento: datetime (en hora local).
+        hora_inicio_diurno: int 0-23.
+        hora_fin_diurno: int 0-23.
+
     Returns:
-        bool: True si es horario diurno, False si es nocturno
+        bool: True si es diurno, False si es nocturno.
     """
-    hora = hora_datetime.time()
-    return HORA_INICIO_DIURNO <= hora < HORA_FIN_DIURNO
+    hora = momento.hour
+    return hora_inicio_diurno <= hora <= hora_fin_diurno
 
 
-def determinar_horario_entrada(fecha_entrada):
+def determinar_horario_entrada(fecha_entrada, hora_inicio_diurno=6, hora_fin_diurno=18):
     """
-    Determina si la entrada fue en horario diurno o nocturno
-    
+    Devuelve 'DIURNO' o 'NOCTURNO' según la hora de entrada.
+    Se usa para guardar el horario de entrada en el registro.
+
+    Los valores por defecto (6, 18) son solo un fallback; en uso real
+    se pasan los valores configurados de la tarifa.
+    """
+    entrada_local = _a_hora_local(fecha_entrada)
+    es_diurno = es_horario_diurno(entrada_local, hora_inicio_diurno, hora_fin_diurno)
+    return 'DIURNO' if es_diurno else 'NOCTURNO'
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CÁLCULO PRINCIPAL
+# ══════════════════════════════════════════════════════════════════════
+
+def calcular_tarifa(fecha_entrada, fecha_salida, tarifa):
+    """
+    Calcula la tarifa total de un estacionamiento.
+
+    FUNCIÓN PURA: recibe la configuración de tarifas como parámetro.
+    No accede a la base de datos.
+
+    Regla de cobro (bloques de media hora):
+        Cada bloque de hora se cobra así:
+            - 1 a 30 minutos  → MITAD de la tarifa del bloque
+            - 31 a 60 minutos → tarifa COMPLETA del bloque
+        Aplica igual a la primera hora y a las horas adicionales.
+
+    Args:
+        fecha_entrada: datetime de entrada.
+        fecha_salida: datetime de salida.
+        tarifa: objeto con atributos primera_hora_diurno,
+                hora_adicional_diurno, primera_hora_nocturno,
+                hora_adicional_nocturno, hora_inicio_diurno,
+                hora_fin_diurno.
+
     Returns:
-        str: 'DIURNO' o 'NOCTURNO'
+        tuple: (tarifa_total: Decimal, minutos_totales: int)
     """
-    return 'DIURNO' if es_horario_diurno(fecha_entrada) else 'NOCTURNO'
+    # 1. Pasar ambas fechas a hora local de Bolivia
+    entrada_local = _a_hora_local(fecha_entrada)
+    salida_local = _a_hora_local(fecha_salida)
 
-def calcular_tarifa(fecha_entrada, fecha_salida):
-    """
-    Calcula la tarifa total basada en entrada y salida
-    
-    Sistema:
-    - DIURNO (06:00-18:00): 1ra hora Bs. 9, adicionales Bs. 2/hora
-    - NOCTURNO (19:00-05:59): Bs. 5/hora
-    """
-    from zoneinfo import ZoneInfo
-    
-    # Convertir UTC a hora local de Bolivia (UTC-4)
-    zona_bolivia = ZoneInfo('America/La_Paz')
-    
-    # Si las fechas vienen en UTC, convertirlas a hora local
-    if fecha_entrada.tzinfo is not None:
-        entrada_local = fecha_entrada.astimezone(zona_bolivia)
-    else:
-        entrada_local = fecha_entrada
-    
-    if fecha_salida.tzinfo is not None:
-        salida_local = fecha_salida.astimezone(zona_bolivia)
-    else:
-        salida_local = fecha_salida
-    
-    # DEBUG
-    print(f"\n=== DEBUG TARIFA ===")
-    print(f"Entrada UTC: {fecha_entrada}")
-    print(f"Entrada Local (Bolivia): {entrada_local}")
-    print(f"Salida UTC: {fecha_salida}")
-    print(f"Salida Local (Bolivia): {salida_local}")
-    
-    # Calcular tiempo total
+    # 2. Tiempo total real en minutos (esto se guarda en el registro)
     delta = salida_local - entrada_local
     minutos_totales = int(delta.total_seconds() / 60)
-    
-    print(f"Minutos totales: {minutos_totales}")
-    
-    # Si es menos de 1 minuto, cobrar mínimo de 1 hora
+
+    # Mínimo 1 minuto (evita cobros en 0 por dobles clics)
     if minutos_totales < 1:
         minutos_totales = 1
-    
-    # Convertir minutos a horas (redondeando hacia arriba)
-    horas_totales = math.ceil(minutos_totales / 60)
-    
-    print(f"Horas totales (redondeadas): {horas_totales}")
-    
-    # Dividir el tiempo en franjas horarias
-    horas_diurnas = 0
-    horas_nocturnas = 0
-    
-    # Recorrer hora por hora desde entrada LOCAL
-    hora_actual = entrada_local
-    
-    for i in range(horas_totales):
-        es_diurno = es_horario_diurno(hora_actual)
-        print(f"Hora {i+1}: {hora_actual.strftime('%H:%M')} - {'DIURNO' if es_diurno else 'NOCTURNO'}")
-        
-        if es_diurno:
-            horas_diurnas += 1
+
+    # 3. Determinar franja de ENTRADA (define el precio de la 1ra hora)
+    entro_en_diurno = es_horario_diurno(
+        entrada_local,
+        tarifa.hora_inicio_diurno,
+        tarifa.hora_fin_diurno,
+    )
+    precio_primera_hora = (
+        Decimal(str(tarifa.primera_hora_diurno))
+        if entro_en_diurno
+        else Decimal(str(tarifa.primera_hora_nocturno))
+    )
+
+    # 4. Recorrer el tiempo en bloques de 1 hora (y el bloque final parcial)
+    tarifa_total = Decimal('0.00')
+    minutos_restantes = minutos_totales
+    momento_actual = entrada_local
+    es_primera_hora = True
+
+    while minutos_restantes > 0:
+        # Minutos que abarca este bloque (máx 60)
+        minutos_bloque = min(60, minutos_restantes)
+
+        # ── Factor según regla de media hora ──
+        #   1-30 min  → 0.5 (mitad)
+        #   31-60 min → 1.0 (completo)
+        if minutos_bloque <= 30:
+            factor = Decimal('0.5')
         else:
-            horas_nocturnas += 1
-        
-        # Avanzar 1 hora
-        hora_actual += timedelta(hours=1)
-    
-    print(f"Horas diurnas: {horas_diurnas}")
-    print(f"Horas nocturnas: {horas_nocturnas}")
-    
-    # Calcular tarifa diurna
-    if horas_diurnas > 0:
-        # Primera hora diurna: Bs. 9
-        tarifa_diurna = TARIFA_DIURNA_PRIMERA
-        print(f"Tarifa primera hora diurna: {tarifa_diurna}")
-        
-        # Horas adicionales diurnas: Bs. 2 c/u
-        if horas_diurnas > 1:
-            adicional = (horas_diurnas - 1) * TARIFA_DIURNA_ADICIONAL
-            print(f"Tarifa adicional diurna: {adicional}")
-            tarifa_diurna += adicional
-    else:
-        tarifa_diurna = Decimal('0.00')
-    
-    # Calcular tarifa nocturna
-    tarifa_nocturna = horas_nocturnas * TARIFA_NOCTURNA
-    print(f"Tarifa nocturna: {tarifa_nocturna}")
-    
-    # Tarifa total
-    tarifa_total = tarifa_diurna + tarifa_nocturna
-    print(f"TARIFA TOTAL: {tarifa_total}")
-    print(f"===================\n")
-    
+            factor = Decimal('1.0')
+
+        # ── Precio base de este bloque ──
+        if es_primera_hora:
+            precio_base = precio_primera_hora
+            es_primera_hora = False
+        else:
+            # Hora adicional: precio según la franja donde transcurre
+            es_diurno_bloque = es_horario_diurno(
+                momento_actual,
+                tarifa.hora_inicio_diurno,
+                tarifa.hora_fin_diurno,
+            )
+            if es_diurno_bloque:
+                precio_base = Decimal(str(tarifa.hora_adicional_diurno))
+            else:
+                precio_base = Decimal(str(tarifa.hora_adicional_nocturno))
+
+        tarifa_total += precio_base * factor
+
+        # Avanzar al siguiente bloque
+        minutos_restantes -= minutos_bloque
+        momento_actual += timedelta(minutes=minutos_bloque)
+
+    # 5. Redondear a 2 decimales
+    tarifa_total = tarifa_total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
     return (tarifa_total, minutos_totales)
 
 
-def calcular_tarifa_actual(fecha_entrada):
+def calcular_tarifa_actual(fecha_entrada, tarifa):
     """
-    Calcula la tarifa si el vehículo saliera AHORA
-    Útil para mostrar estimado antes de confirmar salida
-    
+    Calcula cuánto se cobraría si el vehículo saliera AHORA.
+    Útil para mostrar la tarifa estimada en vivo.
+
+    FUNCIÓN PURA: también recibe la tarifa como parámetro.
+
     Args:
-        fecha_entrada: datetime - Hora de entrada
-    
+        fecha_entrada: datetime de entrada.
+        tarifa: misma estructura que en calcular_tarifa().
+
     Returns:
-        tuple: (tarifa_estimada, tiempo_minutos)
+        tuple: (tarifa_estimada: Decimal, minutos_transcurridos: int)
     """
     from django.utils import timezone
-    fecha_salida_actual = timezone.now()
-    return calcular_tarifa(fecha_entrada, fecha_salida_actual)
+    return calcular_tarifa(fecha_entrada, timezone.now(), tarifa)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# HELPER PRIVADO
+# ══════════════════════════════════════════════════════════════════════
+
+def _a_hora_local(fecha):
+    """
+    Convierte un datetime a hora local de Bolivia.
+    Si el datetime no tiene zona horaria (naive), se devuelve tal cual.
+    """
+    if fecha.tzinfo is not None:
+        return fecha.astimezone(ZONA_BOLIVIA)
+    return fecha

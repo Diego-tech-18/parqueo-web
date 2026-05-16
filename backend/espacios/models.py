@@ -53,18 +53,19 @@ class Seccion(models.Model):
     
     @property
     def total_espacios(self):
-        """Cuenta cuántos espacios tiene esta sección"""
-        return self.espacios.count()
-    
+        """Cuenta cuántos espacios ACTIVOS tiene esta sección.
+        Los espacios inactivos (soft-deleted) no se cuentan."""
+        return self.espacios.filter(activo=True).count()
+
     @property
     def espacios_libres(self):
-        """Cuenta cuántos espacios están libres"""
-        return self.espacios.filter(estado='LIBRE').count()
-    
+        """Cuenta cuántos espacios activos están libres."""
+        return self.espacios.filter(estado='LIBRE', activo=True).count()
+
     @property
     def espacios_ocupados(self):
-        """Cuenta cuántos espacios están ocupados"""
-        return self.espacios.filter(estado='OCUPADO').count()
+        """Cuenta cuántos espacios activos están ocupados."""
+        return self.espacios.filter(estado='OCUPADO', activo=True).count()
 
 
 
@@ -258,10 +259,38 @@ class Registro(models.Model):
         null=True,
         help_text="Notas u observaciones adicionales"
     )
+
+
+
+    # ── "Foto" de la tarifa vigente al momento de la ENTRADA ──
+    # Se copian aquí para que cambios posteriores en la configuración
+    # de tarifas NO afecten a vehículos que ya estaban dentro.
+    # (Igual que una factura: conserva el precio del momento de emisión.)
+    tarifa_primera_hora_diurno = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    tarifa_hora_adicional_diurno = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    tarifa_primera_hora_nocturno = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    tarifa_hora_adicional_nocturno = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    tarifa_hora_inicio_diurno = models.PositiveSmallIntegerField(
+        null=True, blank=True
+    )
+    tarifa_hora_fin_diurno = models.PositiveSmallIntegerField(
+        null=True, blank=True
+    )
     
     # ── Auditoría ──
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
+
+
+    
     
     class Meta:
         db_table = 'registros'
@@ -310,3 +339,89 @@ class Registro(models.Model):
             delta = timezone.now() - self.fecha_entrada
         
         return int(delta.total_seconds() / 60)
+
+
+class Tarifa(models.Model):
+    """
+    Configuración global de tarifas del parqueo.
+
+    Patrón Singleton: siempre existe EXACTAMENTE UNA fila (pk=1).
+    El administrador edita estos valores desde la web y toman efecto
+    inmediatamente, sin necesidad de redesplegar el código.
+
+    Aplica solo a vehículos con cálculo automático (autos) en secciones
+    ROTATIVAS. Las motos se cobran de forma manual, por lo que su tarifa
+    NO se define aquí. Las secciones ASIGNADOS (abonados) tampoco usan
+    esta configuración.
+
+    Se obtiene siempre con Tarifa.obtener(), que garantiza que la fila
+    exista (la crea con valores por defecto si es la primera vez).
+    """
+
+    # ── Tarifas diurnas ──
+    primera_hora_diurno = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=9.00,
+        help_text="Bs. por la primera hora en horario diurno",
+    )
+    hora_adicional_diurno = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=2.00,
+        help_text="Bs. por cada hora adicional en horario diurno",
+    )
+
+    # ── Tarifas nocturnas ──
+    primera_hora_nocturno = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=12.00,
+        help_text="Bs. por la primera hora en horario nocturno",
+    )
+    hora_adicional_nocturno = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=5.00,
+        help_text="Bs. por cada hora adicional en horario nocturno",
+    )
+
+    # ── Horarios de las franjas (hora del día, 0-23) ──
+    hora_inicio_diurno = models.PositiveSmallIntegerField(
+        default=6,
+        help_text="Hora en que empieza el horario diurno (0-23). Ej: 6 = 6:00 AM",
+    )
+    hora_fin_diurno = models.PositiveSmallIntegerField(
+        default=18,
+        help_text="Última hora del horario diurno (0-23). Ej: 18 = válido hasta las 18:59",
+    )
+
+    # ── Auditoría básica ──
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tarifa"
+        verbose_name_plural = "Tarifas"
+
+    def __str__(self):
+        return (
+            f"Tarifa: Diurno {self.primera_hora_diurno}/{self.hora_adicional_diurno} | "
+            f"Nocturno {self.primera_hora_nocturno}/{self.hora_adicional_nocturno}"
+        )
+
+    def save(self, *args, **kwargs):
+        """Forzar que siempre sea la fila pk=1 (patrón singleton)."""
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def obtener(cls):
+        """
+        Devuelve la única fila de configuración de tarifas.
+        Si no existe (primera vez), la crea con los valores por defecto.
+
+        Esto garantiza que el cálculo de tarifa NUNCA falle por
+        ausencia de configuración.
+        """
+        tarifa, _creada = cls.objects.get_or_create(pk=1)
+        return tarifa
